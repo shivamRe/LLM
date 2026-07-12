@@ -14,7 +14,7 @@ resources:
             - task_key: Run_Retail_Demo_Pipeline
           run_if: ALL_DONE
           notebook_task:
-            notebook_path: /Users/shivam.singhyou2507@gmail.com/Shivam_ErrorLogs/Error_Logger
+            notebook_path: /Users/shivam.singhyou2507@gmail.com/ErrorLogs/Error_Logger
             source: WORKSPACE
           description: Automatically logs pipeline errors to
             retail_demo.monitoring.error_log table for Genie troubleshooting
