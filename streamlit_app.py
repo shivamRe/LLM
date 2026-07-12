@@ -663,6 +663,9 @@ def render_sidebar():
         elif st.session_state.connection_status == "Disconnected":
 
             st.error("🔴 Disconnected")
+            # Show the actual error if available
+            if "connection_error" in st.session_state:
+                st.exception(st.session_state.connection_error)
 
         else:
 
