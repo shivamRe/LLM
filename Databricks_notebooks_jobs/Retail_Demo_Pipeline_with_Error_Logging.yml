@@ -1,0 +1,22 @@
+resources:
+  jobs:
+    Retail_Demo_Pipeline_with_Error_Logging:
+      name: Retail_Demo_Pipeline_with_Error_Logging
+      description: Runs Retail Demo Pipeline and automatically logs any errors for
+        Genie Space troubleshooting
+      tasks:
+        - task_key: Run_Retail_Demo_Pipeline
+          pipeline_task:
+            pipeline_id: 5d0d0b60-a369-4863-8fac-32c0c848b4b6
+            full_refresh: false
+        - task_key: Log_Pipeline_Errors
+          depends_on:
+            - task_key: Run_Retail_Demo_Pipeline
+          run_if: ALL_DONE
+          notebook_task:
+            notebook_path: /Users/shivam.singhyou2507@gmail.com/Shivam_ErrorLogs/Error_Logger
+            source: WORKSPACE
+          description: Automatically logs pipeline errors to
+            retail_demo.monitoring.error_log table for Genie troubleshooting
+      queue:
+        enabled: true
