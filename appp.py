@@ -177,7 +177,26 @@ Come back tomorrow or use a paid SQL Warehouse.
 # =============================================================================
 # SQL EXECUTION
 # =============================================================================
+@st.cache_resource
+def get_databricks_connection():
+    try:
+        host = os.getenv("DATABRICKS_HOST")
+        token = os.getenv("DATABRICKS_TOKEN")
+        warehouse = os.getenv("DATABRICKS_WAREHOUSE_ID")
 
+        if not host or not token or not warehouse:
+            st.error("Missing Databricks credentials.")
+            return None
+
+        return sql.connect(
+            server_hostname=host,
+            http_path=f"/sql/1.0/warehouses/{warehouse}",
+            access_token=token
+        )
+
+    except Exception as e:
+        st.error(f"Connection failed: {e}")
+        return None
 
 @st.cache_data(ttl=30, show_spinner=False)
 def execute_query(query: str):
