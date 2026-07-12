@@ -1,0 +1,80 @@
+Retail Demo Pipeline - Complete Documentation
+Pipeline Documentation
+# Retail Demo Pipeline - Complete Documentation
+Purpose This pipeline demonstrates a Medallion Architecture for retail data processing, with intentional errors for troubleshooting demonstrations.
+Business Domain
+Domain: E-commerce Retail - Business Unit: Sales & Analytics - Data Owner: Data Engineering Team - Primary Users: Business Analysts, Data Scientists, Executive Dashboards
+Use Cases: 1. Daily Revenue Reporting - Track sales performance 2. Data Quality Monitoring - Identify data issues early 3. Error Pattern Analysis - Learn from historical failures 4. Pipeline Troubleshooting Training - Teach team how to debug
+Pipeline Structure
+Retail_Demo_Pipeline: - 01_Bronze_Layer → Raw data ingestion - 02_Silver_Layer → Data cleaning & validation - 03_Gold_Layer → Business metrics
+Pipeline Type: Lakeflow Spark Declarative Pipeline (formerly DLT) Execution Mode: Triggered (on-demand for demos) Storage Location: Unity Catalog schema retail_demo.pipeline_output
+Data Lineage
+Complete Flow: Source System (Orders API) → BRONZE LAYER (bronze_orders - Raw data) → SILVER LAYER (silver_orders - Cleaned & validated) → GOLD LAYER (gold_daily_revenue - Business metrics) → Dashboards
+Transformations: Bronze → Silver:   • Filter cancelled orders   • Validate customer_id NOT NULL (will fail!)   • Validate amount > 0 (will fail!)   • Add processed_date timestamp
+Silver → Gold:   • GROUP BY order_date   • COUNT orders   • SUM revenue   • AVG order value
+Table Schemas
+1. Bronze Layer: bronze_orders
+Purpose: Raw order data as received from source
+Columns: - order_id (INT): Unique order identifier [Not Nullable] - customer_id (INT): Customer identifier [NULLABLE - causes errors!] - order_date (STRING): Order date (may be invalid) [Not Nullable] - amount (DOUBLE): Order amount (may be negative) [Not Nullable] - status (STRING): Order status (completed, pending, refunded, cancelled) [Not Nullable]
+Data Quality Issues (Intentional): - Row 3: customer_id = NULL → Will fail Silver validation - Row 4: order_date = "invalid-date" → Date parsing issues - Row 5: amount = -50.00 → Negative amount fails validation
+2. Silver Layer: silver_orders
+Purpose: Cleaned and validated orders
+Columns: - order_id (INT): Unique order identifier - customer_id (INT): Customer identifier [NOT NULL - enforced!] - order_date (DATE): Parsed and validated date - amount (DOUBLE): Order amount [MUST BE > 0] - status (STRING): Order status - processed_date (TIMESTAMP): When record was processed
+Validations: - Expectation: customer_id IS NOT NULL (expect_or_fail) - Expectation: amount > 0 (expect_or_fail) - Expectation: status IN ('completed', 'pending', 'refunded')
+3. Gold Layer: gold_daily_revenue
+Purpose: Daily business metrics for reporting
+Columns: - order_date (DATE): Aggregation date - total_orders (BIGINT): Count of orders - total_revenue (DOUBLE): Sum of all order amounts - avg_order_value (DOUBLE): Average order amount
+Intentional Error Scenarios
+Scenario 1: NULL Customer ID
+Location: Silver Layer validation
+Error Message: com.databricks.sql.managedcatalog.DatabricksExpectationException: Constraint violation: valid_customer Expression: customer_id IS NOT NULL Found row with NULL customer_id
+Root Cause: - Bronze row 3 has customer_id = NULL - Silver layer has strict validation: @dlt.expect_or_fail("valid_customer", "customer_id IS NOT NULL")
+Solution Options: 1. Filter in Bronze: Remove NULL customer_ids before Silver 2. Change validation: Use expect_or_drop instead of expect_or_fail 3. Fix source data: Investigate why NULLs exist upstream
+Scenario 2: Negative Amount
+Location: Silver Layer validation
+Error Message: com.databricks.sql.managedcatalog.DatabricksExpectationException: Constraint violation: valid_amount Expression: amount > 0 Found row with amount: -50.00
+Root Cause: - Bronze row 5 has amount = -50.00 (refund) - Silver validation: @dlt.expect_or_fail("valid_amount", "amount > 0") - Business decided refunds should be handled in separate table
+Solution Options: 1. Filter negative amounts: .filter(col('amount') > 0) 2. Use absolute value: .withColumn('amount', abs(col('amount'))) 3. Create separate refunds table
+Scenario 3: Invalid Date Format
+Location: Bronze/Silver date parsing
+Error Message: DateTimeException: Cannot parse 'invalid-date' as DATE
+Root Cause: - Bronze row 4 has order_date = "invalid-date" - to_date() function cannot parse invalid format
+Solution: Use safe date parsing: .withColumn('order_date', to_date(col('order_date'), 'yyyy-MM-dd')) .filter(col('order_date').isNotNull())
+Monitoring & Logging Tables
+Error Log Table: retail_demo.monitoring.error_log
+Purpose: Automatically capture all pipeline errors for analysis
+Schema: - error_id (STRING): Unique error identifier (ERR_20260710_143022) - timestamp (TIMESTAMP): When error occurred - pipeline_name (STRING): Which pipeline failed - layer (STRING): bronze/silver/gold - error_type (STRING): DataQualityFailure, SchemaError, etc. - error_message (STRING): Full error description - solution (STRING): Recommended fix - status (STRING): open/resolved/investigating
+Usage: Log errors automatically when pipeline fails. Query for troubleshooting analysis.
+Technical Configuration
+Pipeline Settings: - Target Schema: retail_demo.pipeline_output - Mode: Development (allows full refresh for demos) - Cluster Configuration: Serverless (auto-scaling)
+Notebooks: 1. /Users/shivam.singhyou2507@gmail.com/Shivam_Pipeline/01_Bronze_Layer 2. /Users/shivam.singhyou2507@gmail.com/Shivam_Pipeline/02_Silver_Layer 3. /Users/shivam.singhyou2507@gmail.com/Shivam_Pipeline/03_Gold_Layer
+Troubleshooting Guide
+# Troubleshooting Guide
+Common Errors
+Error 1: NULL customer_id
+Symptom: Pipeline fails at Silver layer
+Error Message: Constraint violation: valid_customer Row with NULL customer_id found
+Solution Options:
+Option 1 - Filter out NULLs: .filter(col("customer_id").isNotNull())
+Option 2 - Change validation rule: @dlt.expect_or_drop("valid_customer", "customer_id IS NOT NULL")
+Option 3 - Investigate source: Check why source system sends NULL customer_ids
+Error 2: Negative Amount
+Symptom: Pipeline fails data quality check
+Error Message: Constraint violation: valid_amount Negative amount detected: -50.00
+Solution Options:
+Option 1 - Filter negative amounts: .filter(col("amount") > 0)
+Option 2 - Handle refunds separately: .withColumn("amount", abs(col("amount")))
+Option 3 - Create refunds table: Separate positive orders from refunds
+Error 3: Invalid Date Format
+Symptom: Pipeline fails during date parsing
+Error Message: Cannot parse 'invalid-date' as DATE
+Solution:
+Use safe date parsing: .withColumn("order_date", to_date(col("order_date"), "yyyy-MM-dd")) .filter(col("order_date").isNotNull())
+Handles invalid dates gracefully by converting to NULL then filtering.
+Troubleshooting Workflow
+1. Check Error Log Table:    SELECT * FROM retail_demo.monitoring.error_log ORDER BY timestamp DESC
+2. Identify Failed Layer:    Look at 'layer' column (bronze/silver/gold)
+3. Find Error Type:    Check 'error_type' and 'error_message'
+4. Apply Solution:    Use recommended solution from 'solution' column
+5. Test Fix:    Re-run pipeline and verify
+6. Update Status:    Mark error as 'resolved' in error_log table
