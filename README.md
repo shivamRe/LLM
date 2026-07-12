@@ -31,7 +31,7 @@ Edit `.env` and add your Databricks credentials:
 
 ```
 DATABRICKS_HOST=your-workspace.cloud.databricks.com
-DATABRICKS_TOKEN=dapi1234567890abcdef
+DATABRICKS_TOKEN=fkfk
 DATABRICKS_WAREHOUSE_ID=your-warehouse-id
 ```
 
