@@ -4,11 +4,11 @@ resources:
       name: Retail_Demo_Pipeline
       libraries:
         - notebook:
-            path: /Users/shivam.singhyou2507@gmail.com/Shivam_Pipeline/01_Bronze_Layer
+            path: /Users/shivam.singhyou2507@gmail.com/Pipeline/01_Bronze_Layer
         - notebook:
-            path: /Users/shivam.singhyou2507@gmail.com/Shivam_Pipeline/02_Silver_Layer
+            path: /Users/shivam.singhyou2507@gmail.com/Pipeline/02_Silver_Layer
         - notebook:
-            path: /Users/shivam.singhyou2507@gmail.com/Shivam_Pipeline/03_Gold_Layer
+            path: /Users/shivam.singhyou2507@gmail.com/Pipeline/03_Gold_Layer
       schema: default
       continuous: false
       development: false
