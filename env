@@ -1,25 +1,6 @@
-# Databricks Workspace Configuration
-# Generated for: shivam.singhyou2507@gmail.com
-# Workspace: dbc-21f2ee4d-f1f0.cloud.databricks.com
-
-# IMPORTANT: You need to create a Personal Access Token (PAT)
-# Instructions:
-# 1. Go to: https://dbc-21f2ee4d-f1f0.cloud.databricks.com/setting/account
-# 2. Click "Developer" > "Access tokens"
-# 3. Click "Generate new token"
-# 4. Copy the token and paste it below
-
 DATABRICKS_HOST=https://dbc-21f2ee4d-f1f0.cloud.databricks.com
 DATABRICKS_TOKEN=dapi43b9e244e458f2c5e56ef90728343e6b
-
-# Chatbot Configuration
-CATALOG=retail_demo
-SCHEMA_MONITORING=monitoring
-SCHEMA_RAG=rag
-
 ERROR_LOG_TABLE=retail_demo.monitoring.error_log
 DOCS_TABLE=retail_demo.rag.documentation_source
 VECTOR_INDEX=retail_demo.rag.documentation_index
-
-# Optional: Genie Space ID (for reference)
-GENIE_SPACE_ID=01f17daec7881cee96a3717876a6aca0
+DATABRICKS_WAREHOUSE_ID=b779aedb36de4c84
