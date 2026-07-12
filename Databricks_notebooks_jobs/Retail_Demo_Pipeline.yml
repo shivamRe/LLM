@@ -1,0 +1,19 @@
+resources:
+  pipelines:
+    pipeline_retail_demo_pipeline:
+      name: Retail_Demo_Pipeline
+      libraries:
+        - notebook:
+            path: /Users/shivam.singhyou2507@gmail.com/Shivam_Pipeline/01_Bronze_Layer
+        - notebook:
+            path: /Users/shivam.singhyou2507@gmail.com/Shivam_Pipeline/02_Silver_Layer
+        - notebook:
+            path: /Users/shivam.singhyou2507@gmail.com/Shivam_Pipeline/03_Gold_Layer
+      schema: default
+      continuous: false
+      development: false
+      photon: true
+      channel: CURRENT
+      catalog: workspace
+      serverless: true
+      root_path: /Users/shivam.singhyou2507@gmail.com/retail_demo_pipeline_39377420
