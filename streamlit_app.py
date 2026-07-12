@@ -645,28 +645,9 @@ def render_sidebar():
             st.error("🔴 Disconnected")
         
             error = st.session_state.get("connection_error", "")
-        
+
             if error:
-                lower_error = error.lower()
-        
-                if (
-                    "daily limit" in lower_error
-                    or "free edition" in lower_error
-                    or "quota" in lower_error
-                    or "429" in lower_error
-                    or "rate limit" in lower_error
-                ):
-                    st.error(
-                        """
-        🚫 **Databricks Free Edition Limit Reached**
-        
-        Your SQL Warehouse has reached today's free usage limit.
-        
-        Please try again tomorrow or use a paid SQL Warehouse.
-        """
-                    )
-                else:
-                    st.exception(Exception(error))
+                st.exception(Exception(error))
                 
 
         else:
