@@ -136,40 +136,22 @@ def get_connection():
 
 
 def test_connection():
-
     try:
-
         conn = get_connection()
 
         with conn.cursor() as cursor:
             cursor.execute("SELECT 1")
-
             cursor.fetchall()
 
         st.session_state.connection_status = "Connected"
-
+        st.session_state.connection_error = None
         return True
 
     except Exception as e:
-
         st.session_state.connection_status = "Disconnected"
 
         error = str(e)
-
-        if "free daily limit" in error.lower():
-
-            st.error(
-                """
-🚫 **Databricks Free Edition Limit Reached**
-
-Your SQL Warehouse has reached today's free usage limit.
-
-Come back tomorrow or use a paid SQL Warehouse.
-"""
-            )
-
-        else:
-            st.error(error)
+        st.session_state.connection_error = error
 
         return False
 
@@ -657,15 +639,35 @@ def render_sidebar():
         st.subheader("Connection")
 
         if st.session_state.connection_status == "Connected":
-
             st.success("🟢 Connected")
-
+        
         elif st.session_state.connection_status == "Disconnected":
-
             st.error("🔴 Disconnected")
-            # Show the actual error if available
-            if "connection_error" in st.session_state:
-                st.exception(st.session_state.connection_error)
+        
+            error = st.session_state.get("connection_error", "")
+        
+            if error:
+                lower_error = error.lower()
+        
+                if (
+                    "daily limit" in lower_error
+                    or "free edition" in lower_error
+                    or "quota" in lower_error
+                    or "429" in lower_error
+                    or "rate limit" in lower_error
+                ):
+                    st.error(
+                        """
+        🚫 **Databricks Free Edition Limit Reached**
+        
+        Your SQL Warehouse has reached today's free usage limit.
+        
+        Please try again tomorrow or use a paid SQL Warehouse.
+        """
+                    )
+                else:
+                    st.exception(Exception(error))
+                
 
         else:
 
