@@ -137,6 +137,7 @@ def get_connection():
 
 def test_connection():
     try:
+        get_connection.clear() 
         conn = get_connection()
 
         with conn.cursor() as cursor:
