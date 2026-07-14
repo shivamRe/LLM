@@ -12,7 +12,7 @@ from typing import Optional
 
 import pandas as pd
 import streamlit as st
-from databricks import sql
+#from databricks import sql
 
 # =============================================================================
 # PAGE CONFIG
