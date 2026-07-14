@@ -33,274 +33,38 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Modern ChatGPT-like CSS - FIXED VERSION
+# Custom CSS for better UI
 st.markdown("""
 <style>
-    /* Import modern font */
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-    
-    /* Global styles */
-    * {
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-    }
-    
-    /* Main container - lighter background */
-    .main {
-        background: linear-gradient(135deg, #f5f7fa 0%, #e8eaf6 100%);
-        padding: 2rem;
-    }
-    
-    .block-container {
-        padding-top: 2rem;
-        padding-bottom: 2rem;
-        max-width: 1200px;
-    }
-    
-    /* Sidebar styling */
-    [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #1e1e2e 0%, #2d2d44 100%);
-        border-right: 1px solid rgba(255,255,255,0.1);
-    }
-    
-    [data-testid="stSidebar"] h1 {
-        color: #fff !important;
-        font-size: 1.4rem !important;
-        font-weight: 700;
-        margin-bottom: 1rem;
-    }
-    
-    [data-testid="stSidebar"] h2 {
-        color: #e0e0e0 !important;
-        font-size: 1.1rem !important;
-        font-weight: 600;
-        margin-top: 1.5rem;
-    }
-    
-    [data-testid="stSidebar"] h3 {
-        color: #e0e0e0 !important;
-        font-size: 1rem !important;
-    }
-    
-    [data-testid="stSidebar"] p, [data-testid="stSidebar"] label, [data-testid="stSidebar"] span {
-        color: #b0b0b0 !important;
-    }
-    
-    /* Metrics in sidebar */
-    [data-testid="stSidebar"] [data-testid="stMetric"] {
-        background: rgba(255,255,255,0.05);
-        padding: 12px;
-        border-radius: 10px;
-        border: 1px solid rgba(255,255,255,0.1);
-    }
-    
-    [data-testid="stSidebar"] [data-testid="stMetricValue"] {
-        color: #fff !important;
-        font-size: 1.8rem !important;
-        font-weight: 700;
-    }
-    
-    /* Chat messages - ONLY style actual messages */
-    [data-testid="stChatMessage"] {
-        background: white;
-        border-radius: 18px;
-        padding: 16px 20px;
-        margin: 12px 0;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-        border: 1px solid #e5e7eb;
-        animation: slideIn 0.3s ease-out;
-    }
-    
-    @keyframes slideIn {
-        from {
-            opacity: 0;
-            transform: translateY(10px);
-        }
-        to {
-            opacity: 1;
-            transform: translateY(0);
-        }
-    }
-    
-    /* User message - gradient blue */
-    [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-user"]) {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-        color: white !important;
-        border: none !important;
-    }
-    
-    [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-user"]) p {
-        color: white !important;
-    }
-    
-    /* Assistant message - white card */
-    [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) {
-        background: white !important;
-        border: 1px solid #e5e7eb !important;
-    }
-    
-    [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) p {
-        color: #1e1e2e !important;
-    }
-    
-    /* Chat input */
-    [data-testid="stChatInput"] {
-        border: none;
-    }
-    
-    [data-testid="stChatInput"] textarea {
-        border-radius: 12px !important;
-        border: 2px solid #e5e7eb !important;
-        padding: 12px 16px !important;
-        font-size: 15px !important;
-        background: white !important;
-    }
-    
-    [data-testid="stChatInput"] textarea:focus {
-        border-color: #667eea !important;
-        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1) !important;
-    }
-    
-    /* Buttons - modern gradient */
     .stButton button {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        border: none;
-        border-radius: 10px;
-        padding: 10px 20px;
-        font-weight: 600;
-        font-size: 14px;
-        transition: all 0.3s ease;
-        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
         width: 100%;
+        border-radius: 5px;
+        margin: 2px 0;
     }
-    
-    .stButton button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+    .error-box {
+        background-color: #fee;
+        border-left: 4px solid #f44;
+        padding: 10px;
+        margin: 10px 0;
+        border-radius: 5px;
     }
-    
-    /* Starter question buttons */
-    div[data-testid="column"] .stButton button {
-        background: white;
-        color: #667eea;
-        border: 2px solid #667eea;
-        box-shadow: 0 2px 10px rgba(102, 126, 234, 0.15);
+    .solution-box {
+        background-color: #efe;
+        border-left: 4px solid #4f4;
+        padding: 10px;
+        margin: 10px 0;
+        border-radius: 5px;
     }
-    
-    div[data-testid="column"] .stButton button:hover {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        border-color: transparent;
+    .doc-box {
+        background-color: #eef;
+        border-left: 4px solid #44f;
+        padding: 10px;
+        margin: 10px 0;
+        border-radius: 5px;
     }
-    
-    /* Success/Error alerts */
-    .stSuccess, .stError, .stInfo, .stWarning {
+    .stChatMessage {
+        padding: 1rem;
         border-radius: 10px;
-        border: none;
-        padding: 12px 16px;
-    }
-    
-    .stSuccess {
-        background: #10b981 !important;
-        color: white !important;
-    }
-    
-    .stError {
-        background: #ef4444 !important;
-        color: white !important;
-    }
-    
-    .stInfo {
-        background: #3b82f6 !important;
-        color: white !important;
-    }
-    
-    .stWarning {
-        background: #f59e0b !important;
-        color: white !important;
-    }
-    
-    /* Code blocks */
-    code {
-        background: #f3f4f6 !important;
-        color: #667eea !important;
-        padding: 2px 6px;
-        border-radius: 4px;
-        font-family: 'Monaco', 'Courier New', monospace;
-    }
-    
-    pre {
-        background: #1e1e2e !important;
-        border-radius: 10px !important;
-        padding: 16px !important;
-        border: 1px solid rgba(255,255,255,0.1);
-    }
-    
-    pre code {
-        color: #a6e3a1 !important;
-        background: transparent !important;
-    }
-    
-    /* Title styling */
-    h1 {
-        color: #1e1e2e !important;
-        font-weight: 700;
-        font-size: 2.2rem;
-        margin-bottom: 1.5rem;
-    }
-    
-    h2, h3 {
-        color: #1e1e2e !important;
-        font-weight: 600;
-    }
-    
-    /* Divider */
-    hr {
-        border: none;
-        border-top: 1px solid rgba(0,0,0,0.1);
-        margin: 1.5rem 0;
-    }
-    
-    /* Spinner */
-    .stSpinner > div {
-        border-top-color: #667eea !important;
-    }
-    
-    /* Scrollbar */
-    ::-webkit-scrollbar {
-        width: 8px;
-        height: 8px;
-    }
-    
-    ::-webkit-scrollbar-track {
-        background: #f5f7fa;
-    }
-    
-    ::-webkit-scrollbar-thumb {
-        background: rgba(102, 126, 234, 0.5);
-        border-radius: 10px;
-    }
-    
-    ::-webkit-scrollbar-thumb:hover {
-        background: rgba(102, 126, 234, 0.7);
-    }
-    
-    /* Welcome card */
-    .welcome-card {
-        background: white;
-        padding: 30px;
-        border-radius: 20px;
-        box-shadow: 0 10px 40px rgba(0,0,0,0.1);
-        margin-bottom: 2rem;
-    }
-    
-    .welcome-card h3 {
-        color: #667eea !important;
-        margin-bottom: 1rem;
-    }
-    
-    .welcome-card p {
-        color: #1e1e2e !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -725,7 +489,7 @@ def main():
     # ═══════════════════════════════════════════════════════════════════════════
     
     with st.sidebar:
-        st.title("🤖 Pipeline Assistant")
+        st.title("🤖 Pipeline Troubleshooting Assistant")
         
         # Connection status
         if st.session_state.connection_status == "connected":
@@ -753,7 +517,7 @@ def main():
                 if stats['by_layer']:
                     st.write("**By Layer:**")
                     for layer, count in stats['by_layer'].items():
-                        st.write(f"🔹 {layer.title()}: {count}")
+                        st.write(f"- {layer.title()}: {count}")
             
             except Exception as e:
                 st.warning("Could not load statistics")
@@ -790,6 +554,7 @@ def main():
             **Data Sources:**
             - `retail_demo.monitoring.error_log`
             - `retail_demo.rag.documentation_source`
+            - `retail_demo.rag.documentation_index`
             """)
     
     # ═══════════════════════════════════════════════════════════════════════════
@@ -800,18 +565,15 @@ def main():
     
     # Show starter questions if no messages
     if len(st.session_state.messages) == 0:
-        st.markdown('<div class="welcome-card">', unsafe_allow_html=True)
-        st.markdown("### 👋 Welcome! How can I help you today?")
-        st.markdown("Click any question below to get started:")
-        st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown("### 👋 Welcome! Try these questions:")
         
         starter_questions = [
-            "What errors happened today?",
-            "Show NULL customer_id issues",
-            "Explain expect_or_drop",
-            "Show me bronze layer errors",
-            "Common data quality issues",
-            "How to handle invalid dates?"
+            "What errors happened in the pipeline today?",
+            "How do I fix NULL customer_id errors?",
+            "Show me all documentation about expect_or_drop",
+            "What's the difference between expect_or_fail and expect_or_drop?",
+            "Show me common data quality issues",
+            "How do I handle invalid date formats in DLT?"
         ]
         
         cols = st.columns(2)
