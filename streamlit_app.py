@@ -281,10 +281,14 @@ def format_errors(df):
     
     response = f"## Found {len(df)} matching error(s)\n\n"
     for _, row in df.iterrows():
-        response += f"""### 🔴 {row['error_type']}
-**ID:** `{row['error_id']}`  |  **Layer:** {row['layer']}  |  **Status:** {row['status']}
-**Time:** {row['timestamp']}
-
-**Error Message:**
-```text
-{row['error_message']}
+        # Using standard newlines instead of raw triple quotes inside triple quotes 
+        # prevents the markdown backticks from breaking the Python parser
+        response += f"### 🔴 {row['error_type']}\n"
+        response += f"**ID:** `{row['error_id']}`  |  **Layer:** {row['layer']}  |  **Status:** {row['status']}\n"
+        response += f"**Time:** {row['timestamp']}\n\n"
+        response += "**Error Message:**\n"
+        response += f"```text\n{row['error_message']}\n```\n\n"
+        response += "**Recommended Solution:**\n"
+        response += f"```python\n{row['solution']}\n```\n"
+        response += "---\n"
+    return response
