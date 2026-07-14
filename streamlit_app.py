@@ -281,8 +281,6 @@ def format_errors(df):
     
     response = f"## Found {len(df)} matching error(s)\n\n"
     for _, row in df.iterrows():
-        # Using standard newlines instead of raw triple quotes inside triple quotes 
-        # prevents the markdown backticks from breaking the Python parser
         response += f"### 🔴 {row['error_type']}\n"
         response += f"**ID:** `{row['error_id']}`  |  **Layer:** {row['layer']}  |  **Status:** {row['status']}\n"
         response += f"**Time:** {row['timestamp']}\n\n"
@@ -292,3 +290,187 @@ def format_errors(df):
         response += f"```python\n{row['solution']}\n```\n"
         response += "---\n"
     return response
+
+
+def format_docs(df):
+    if df.empty:
+        return "📚 No documentation found."
+    
+    answer = ""
+    for _, row in df.iterrows():
+        content = row["content"]
+        if len(content) > 450:
+            content = content[:450] + "..."
+        answer += f"## 📘 {row['title']}\n**Category:** {row['category']}\n\n{content}\n\n---\n"
+    return answer
+
+# =============================================================================
+# ENGAGEMENT STRATEGY FRAMEWORK (ORCHESTRATION PIPELINE)
+# =============================================================================
+
+def generate_response(user_message: str):
+    intent = detect_intent(user_message)
+    keyword = extract_keywords(user_message)
+
+    if intent == "error":
+        with st.spinner("Searching error logs..."):
+            df = search_errors(keyword)
+            if not df.empty:
+                return format_errors(df)
+            
+            docs = search_documentation(keyword)
+            if not docs.empty:
+                return "No errors found.\n\n### Related Documentation\n\n" + format_docs(docs)
+            return "No matching errors or documentation found."
+
+    elif intent == "documentation":
+        with st.spinner("Searching documentation..."):
+            docs = search_documentation(keyword)
+            if not docs.empty:
+                return format_docs(docs)
+            return "No documentation found."
+
+    else:
+        with st.spinner("Searching logs and documentation..."):
+            errors = search_errors(keyword, limit=3)
+            docs = search_documentation(keyword, limit=3)
+            answer = ""
+            if not errors.empty:
+                answer += format_errors(errors)
+            if not docs.empty:
+                answer += "\n\n" + format_docs(docs)
+            
+            if not answer:
+                answer = """I'm your Pipeline Troubleshooting Assistant.
+                
+Try asking things like:
+* • What failed today?
+* • Show bronze errors
+* • How do I use expect_or_drop?
+* • Explain DLT expectations
+"""
+            return answer
+
+# =============================================================================
+# SIDE PANEL VIEW PORT
+# =============================================================================
+
+def render_sidebar():
+    with st.sidebar:
+        st.title("🤖 Pipeline Assistant")
+        st.caption("Enterprise GenAI Chatbot infrastructure natively tied to Unity Catalog.")
+        st.divider()
+
+        st.subheader("Connection Status")
+        if st.session_state.connection_status == "Connected":
+            st.success("🟢 Connected to Databricks")
+        elif st.session_state.connection_status == "Disconnected":
+            st.error("🔴 Disconnected")
+            error = st.session_state.get("connection_error", "")
+            if error:
+                st.caption(f"Error details: {error}")
+        else:
+            st.info("⚪ Not Tested")
+
+        if st.button("🔌 Test Databricks Connection", use_container_width=True):
+            with st.spinner("Connecting..."):
+                test_connection()
+            st.rerun()
+
+        st.divider()
+
+        if st.session_state.connection_status == "Connected":
+            st.subheader("Pipeline Metrics")
+            try:
+                stats = get_error_statistics()
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("Total Errors", stats["total"])
+                with col2:
+                    st.metric("Open Issues", stats["open"])
+                
+                st.write("### Layer Aggregations")
+                st.write(f"指标 Bronze : {stats['bronze']}")
+                st.write(f"指标 Silver : {stats['silver']}")
+                st.write(f"指标 Gold : {stats['gold']}")
+            except Exception:
+                st.warning("Unable to dynamically calculate storage diagnostics metrics.")
+            st.divider()
+
+        st.subheader("Quick Actions")
+        if st.button("📋 Today's Pipeline Errors", use_container_width=True):
+            df = get_today_errors()
+            response = format_errors(df)
+            st.session_state.messages.append({"role": "user", "content": "What errors happened today?"})
+            st.session_state.messages.append({"role": "assistant", "content": response})
+            st.rerun()
+
+        if st.button("🧹 Clear Conversation Threads", use_container_width=True):
+            st.session_state.messages = []
+            st.rerun()
+
+# =============================================================================
+# CORE INTERACTIVE DIALOG WINDOW UI
+# =============================================================================
+
+def render_chat_window():
+    st.title("💬 Pipeline Troubleshooting Assistant")
+    
+    chat_container = st.container()
+
+    with chat_container:
+        for msg in st.session_state.messages:
+            with st.chat_message(msg["role"]):
+                st.markdown(msg["content"])
+
+    if not st.session_state.messages:
+        st.markdown("""## 🚀 Welcome to your Pipeline Workspace Assistant
+        Ask anything regarding **DLT engines**, structural schema validation assertions, or pipeline anomalies.
+        """)
+        
+        questions = [
+            "What errors happened today?", "Show bronze layer errors",
+            "Explain expect_or_drop", "Show NULL customer_id issues"
+        ]
+        cols = st.columns(2)
+        for i, q in enumerate(questions):
+            with cols[i % 2]:
+                if st.button(q, key=f"start_q_index_{i}", use_container_width=True):
+                    st.session_state.messages.append({"role": "user", "content": q})
+                    answer = generate_response(q)
+                    st.session_state.messages.append({"role": "assistant", "content": answer})
+                    st.rerun()
+
+    prompt = st.chat_input("Ask about pipeline failures, documentation or DLT...")
+    if prompt:
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        with chat_container:
+            with st.chat_message("user"):
+                st.markdown(prompt)
+
+        with chat_container:
+            with st.chat_message("assistant"):
+                response = generate_response(prompt)
+                st.markdown(response)
+        
+        st.session_state.messages.append({"role": "assistant", "content": response})
+        st.rerun()
+
+# =============================================================================
+# APPLICATION RUNTIME ENTRY POINT
+# =============================================================================
+
+def main():
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+    if "connection_status" not in st.session_state:
+        st.session_state.connection_status = "Not Tested"
+
+    if st.session_state.connection_status == "Not Tested" and DATABRICKS_HOST:
+        get_connection()
+    
+    render_sidebar()
+    render_chat_window()
+
+if __name__ == "__main__":
+    main()
