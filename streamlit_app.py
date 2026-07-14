@@ -106,7 +106,7 @@ if "connection_status" not in st.session_state:
 # =============================================================================
 
 
-@st.cache_resource(show_spinner=False)
+#@st.cache_resource(show_spinner=False)
 def get_connection():
     """
     Creates a cached Databricks SQL connection.
@@ -160,7 +160,7 @@ def test_connection():
 # =============================================================================
 # SQL EXECUTION
 # =============================================================================
-@st.cache_resource
+#@st.cache_resource
 def get_databricks_connection():
     try:
         host = os.getenv("DATABRICKS_HOST")
@@ -181,7 +181,7 @@ def get_databricks_connection():
         st.error(f"Connection failed: {e}")
         return None
 
-@st.cache_data(ttl=30, show_spinner=False)
+#@st.cache_data(ttl=30, show_spinner=False)
 def execute_query(query: str):
 
     try:
@@ -254,7 +254,7 @@ st.caption(
 # ERROR LOG SEARCH
 # =============================================================================
 
-@st.cache_data(ttl=30, show_spinner=False)
+#@st.cache_data(ttl=30, show_spinner=False)
 def search_errors(keyword: str = "", layer: Optional[str] = None, limit: int = 5):
 
     keyword = sanitize(keyword)
@@ -295,7 +295,7 @@ def search_errors(keyword: str = "", layer: Optional[str] = None, limit: int = 5
 # DOCUMENTATION SEARCH
 # =============================================================================
 
-@st.cache_data(ttl=60, show_spinner=False)
+#@st.cache_data(ttl=60, show_spinner=False)
 def search_documentation(keyword: str, limit: int = 5):
 
     keyword = sanitize(keyword)
