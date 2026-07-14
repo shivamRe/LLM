@@ -1,3 +1,4 @@
+"""
 ===============================================================================
 Pipeline Troubleshooting Assistant
 Enterprise GenAI Chatbot using Streamlit + Databricks SQL
@@ -92,7 +93,7 @@ if "connection_status" not in st.session_state:
     st.session_state.connection_status = "Not Tested"
 
 # =============================================================================
-# DATABRICKS CONNECTION
+# DATABRICKS CONNECTION MANAGEMENT
 # =============================================================================
 
 @st.cache_resource(show_spinner=False)
@@ -134,9 +135,8 @@ def test_connection():
         st.session_state.connection_error = str(e)
         return False
 
-
 # =============================================================================
-# SQL EXECUTION
+# SQL QUERY EXECUTION CORE
 # =============================================================================
 
 @st.cache_data(ttl=30, show_spinner=False)
@@ -162,18 +162,16 @@ def sanitize(text: str):
         return ""
     return text.replace("'", "''")
 
-
 # =============================================================================
-# TABLE CONFIGURATIONS
+# DATA PLATFORM METADATA SCHEMA DEFINITIONS
 # =============================================================================
 
 ERROR_LOG_TABLE = "retail_demo.monitoring.error_log"
 DOC_TABLE = "retail_demo.rag.documentation_source"
 VECTOR_INDEX = "retail_demo.rag.documentation_index"
 
-
 # =============================================================================
-# DATA SEARCH BACKEND FUNCTIONS
+# OPERATIONAL METRICS & DATA RETRIEVAL FUNCTIONS
 # =============================================================================
 
 @st.cache_data(ttl=30, show_spinner=False)
@@ -247,9 +245,8 @@ def get_error_statistics():
 
     return stats
 
-
 # =============================================================================
-# INTENT ENGINE & NLP HELPERS
+# REASONING MATRIX & NLP PARSING LAYER
 # =============================================================================
 
 def detect_intent(message: str):
@@ -274,9 +271,8 @@ def extract_keywords(message: str):
     words = [w for w in words if len(w) > 2 and w not in STOPWORDS]
     return " ".join(words[:5])
 
-
 # =============================================================================
-# FORMATTING UTILITIES
+# LAYOUT STRUCTURES & MARKDOWN GENERATORS
 # =============================================================================
 
 def format_errors(df):
