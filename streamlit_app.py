@@ -33,7 +33,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Modern ChatGPT-like CSS
+# Modern ChatGPT-like CSS - FIXED VERSION
 st.markdown("""
 <style>
     /* Import modern font */
@@ -44,10 +44,16 @@ st.markdown("""
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
     }
     
-    /* Main container */
+    /* Main container - lighter background */
     .main {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        padding: 0;
+        background: linear-gradient(135deg, #f5f7fa 0%, #e8eaf6 100%);
+        padding: 2rem;
+    }
+    
+    .block-container {
+        padding-top: 2rem;
+        padding-bottom: 2rem;
+        max-width: 1200px;
     }
     
     /* Sidebar styling */
@@ -56,22 +62,27 @@ st.markdown("""
         border-right: 1px solid rgba(255,255,255,0.1);
     }
     
-    [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] h1 {
-        color: #fff;
-        font-size: 1.4rem;
+    [data-testid="stSidebar"] h1 {
+        color: #fff !important;
+        font-size: 1.4rem !important;
         font-weight: 700;
         margin-bottom: 1rem;
     }
     
-    [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] h2 {
-        color: #e0e0e0;
-        font-size: 1.1rem;
+    [data-testid="stSidebar"] h2 {
+        color: #e0e0e0 !important;
+        font-size: 1.1rem !important;
         font-weight: 600;
         margin-top: 1.5rem;
     }
     
-    [data-testid="stSidebar"] p {
-        color: #b0b0b0;
+    [data-testid="stSidebar"] h3 {
+        color: #e0e0e0 !important;
+        font-size: 1rem !important;
+    }
+    
+    [data-testid="stSidebar"] p, [data-testid="stSidebar"] label, [data-testid="stSidebar"] span {
+        color: #b0b0b0 !important;
     }
     
     /* Metrics in sidebar */
@@ -82,36 +93,20 @@ st.markdown("""
         border: 1px solid rgba(255,255,255,0.1);
     }
     
-    [data-testid="stSidebar"] [data-testid="stMetric"] label {
-        color: #b0b0b0 !important;
-        font-size: 0.85rem;
-    }
-    
-    [data-testid="stSidebar"] [data-testid="stMetric"] [data-testid="stMetricValue"] {
+    [data-testid="stSidebar"] [data-testid="stMetricValue"] {
         color: #fff !important;
         font-size: 1.8rem !important;
         font-weight: 700;
     }
     
-    /* Chat container - glassmorphism */
-    .stChatFloatingInputContainer {
-        background: rgba(255, 255, 255, 0.95);
-        backdrop-filter: blur(10px);
-        border-radius: 20px;
-        border: 1px solid rgba(255,255,255,0.3);
-        box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.2);
-        padding: 12px;
-    }
-    
-    /* Chat messages */
-    .stChatMessage {
-        background: rgba(255, 255, 255, 0.95);
-        backdrop-filter: blur(10px);
+    /* Chat messages - ONLY style actual messages */
+    [data-testid="stChatMessage"] {
+        background: white;
         border-radius: 18px;
         padding: 16px 20px;
         margin: 12px 0;
         box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-        border: 1px solid rgba(255,255,255,0.5);
+        border: 1px solid #e5e7eb;
         animation: slideIn 0.3s ease-out;
     }
     
@@ -128,11 +123,9 @@ st.markdown("""
     
     /* User message - gradient blue */
     [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-user"]) {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        border: none;
-        margin-left: auto;
-        max-width: 80%;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+        color: white !important;
+        border: none !important;
     }
     
     [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-user"]) p {
@@ -141,21 +134,28 @@ st.markdown("""
     
     /* Assistant message - white card */
     [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) {
-        background: white;
-        border: 1px solid #e5e7eb;
-        max-width: 85%;
+        background: white !important;
+        border: 1px solid #e5e7eb !important;
+    }
+    
+    [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) p {
+        color: #1e1e2e !important;
     }
     
     /* Chat input */
-    .stChatInputContainer textarea {
+    [data-testid="stChatInput"] {
+        border: none;
+    }
+    
+    [data-testid="stChatInput"] textarea {
         border-radius: 12px !important;
         border: 2px solid #e5e7eb !important;
         padding: 12px 16px !important;
         font-size: 15px !important;
-        transition: all 0.2s ease !important;
+        background: white !important;
     }
     
-    .stChatInputContainer textarea:focus {
+    [data-testid="stChatInput"] textarea:focus {
         border-color: #667eea !important;
         box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1) !important;
     }
@@ -194,25 +194,30 @@ st.markdown("""
     }
     
     /* Success/Error alerts */
-    .stSuccess, .stError, .stInfo {
+    .stSuccess, .stError, .stInfo, .stWarning {
         border-radius: 10px;
         border: none;
         padding: 12px 16px;
     }
     
     .stSuccess {
-        background: linear-gradient(135deg, #34d399 0%, #10b981 100%);
-        color: white;
+        background: #10b981 !important;
+        color: white !important;
     }
     
     .stError {
-        background: linear-gradient(135deg, #f87171 0%, #ef4444 100%);
-        color: white;
+        background: #ef4444 !important;
+        color: white !important;
     }
     
     .stInfo {
-        background: linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%);
-        color: white;
+        background: #3b82f6 !important;
+        color: white !important;
+    }
+    
+    .stWarning {
+        background: #f59e0b !important;
+        color: white !important;
     }
     
     /* Code blocks */
@@ -238,22 +243,21 @@ st.markdown("""
     
     /* Title styling */
     h1 {
-        color: white;
+        color: #1e1e2e !important;
         font-weight: 700;
         font-size: 2.2rem;
         margin-bottom: 1.5rem;
-        text-shadow: 0 2px 10px rgba(0,0,0,0.1);
     }
     
     h2, h3 {
-        color: #1e1e2e;
+        color: #1e1e2e !important;
         font-weight: 600;
     }
     
     /* Divider */
     hr {
         border: none;
-        border-top: 1px solid rgba(255,255,255,0.2);
+        border-top: 1px solid rgba(0,0,0,0.1);
         margin: 1.5rem 0;
     }
     
@@ -269,7 +273,7 @@ st.markdown("""
     }
     
     ::-webkit-scrollbar-track {
-        background: rgba(255,255,255,0.1);
+        background: #f5f7fa;
     }
     
     ::-webkit-scrollbar-thumb {
@@ -281,7 +285,7 @@ st.markdown("""
         background: rgba(102, 126, 234, 0.7);
     }
     
-    /* Welcome message */
+    /* Welcome card */
     .welcome-card {
         background: white;
         padding: 30px;
@@ -291,8 +295,12 @@ st.markdown("""
     }
     
     .welcome-card h3 {
-        color: #667eea;
+        color: #667eea !important;
         margin-bottom: 1rem;
+    }
+    
+    .welcome-card p {
+        color: #1e1e2e !important;
     }
 </style>
 """, unsafe_allow_html=True)
