@@ -1,15 +1,22 @@
-import streamlit as st
+def test_connection():
+    st.write("Step 1")
 
-st.write("1")
+    try:
+        st.write("Step 2")
 
-import pandas as pd
-st.write("2")
+        conn = get_connection()
 
-from databricks import sql
-st.write("3")
+        st.write("Step 3")
 
-import re
-st.write("4")
+        with conn.cursor() as cursor:
+            st.write("Step 4")
+            cursor.execute("SELECT 1")
+            st.write("Step 5")
+            cursor.fetchall()
 
-import os
-st.write("5")
+        st.success("Connected")
+        return True
+
+    except Exception as e:
+        st.exception(e)
+        return False
