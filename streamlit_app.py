@@ -1,22 +1,30 @@
-def test_connection():
-    st.write("Step 1")
+import os
+import streamlit as st
+from databricks import sql
 
+st.title("Pipeline Assistant")
+
+st.write("App Loaded ✅")
+
+host = os.getenv("DATABRICKS_HOST")
+warehouse = os.getenv("DATABRICKS_WAREHOUSE_ID")
+token = os.getenv("DATABRICKS_TOKEN")
+
+st.write("Host:", bool(host))
+st.write("Warehouse:", bool(warehouse))
+st.write("Token:", bool(token))
+
+if st.button("Test Connection"):
     try:
-        st.write("Step 2")
+        conn = sql.connect(
+            server_hostname=host,
+            http_path=f"/sql/1.0/warehouses/{warehouse}",
+            access_token=token,
+        )
 
-        conn = get_connection()
-
-        st.write("Step 3")
-
-        with conn.cursor() as cursor:
-            st.write("Step 4")
-            cursor.execute("SELECT 1")
-            st.write("Step 5")
-            cursor.fetchall()
-
-        st.success("Connected")
-        return True
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1")
+            st.success(cur.fetchall())
 
     except Exception as e:
         st.exception(e)
-        return False
