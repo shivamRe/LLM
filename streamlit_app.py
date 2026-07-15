@@ -202,6 +202,103 @@ def execute_query(query: str) -> Optional[pd.DataFrame]:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# SYNONYM MAPPING - CENTRALIZED
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def get_error_synonyms() -> Dict[str, List[str]]:
+    """
+    Comprehensive synonym mapping for error-related terms.
+    
+    Returns:
+        Dictionary mapping base terms to their synonyms
+    """
+    return {
+        "error": ["error", "failure", "issue", "problem", "bug", "fault", "incident", "mistake", "crash", "exception", "broken", "wrong", "fail", "failuer", "failed"],
+        "failure": ["failure", "error", "fail", "failed", "issue", "problem", "bug", "crash", "exception", "broken", "fault"],
+        "issue": ["issue", "error", "problem", "failure", "bug", "trouble"],
+        "problem": ["problem", "error", "issue", "failure", "bug", "exception", "trouble"],
+        "bug": ["bug", "error", "issue", "failure", "problem", "defect"],
+        "fail": ["fail", "failure", "failed", "error", "problem", "broken", "exception", "crash"],
+        "null": ["null", "none", "empty", "missing", "blank"],
+        "invalid": ["invalid", "incorrect", "wrong", "bad", "malformed"],
+        "timeout": ["timeout", "timed out", "hang", "stuck", "slow"],
+        "permission": ["permission", "access", "denied", "forbidden", "unauthorized"],
+    }
+
+
+def get_documentation_synonyms() -> Dict[str, List[str]]:
+    """
+    Comprehensive synonym mapping for documentation/concept terms.
+    
+    Returns:
+        Dictionary mapping base terms to their synonyms
+    """
+    return {
+        # Pipeline terms
+        "pipeline": ["pipeline", "workflow", "etl", "data pipeline", "data flow", "processing"],
+        "dlt": ["dlt", "delta live tables", "delta live", "live tables"],
+        "flow": ["flow", "pipeline", "workflow", "process", "stream"],
+        
+        # Layer terms
+        "bronze": ["bronze", "raw", "landing", "source", "ingestion"],
+        "silver": ["silver", "cleaned", "cleansed", "validated", "refined", "curated"],
+        "gold": ["gold", "aggregated", "aggregate", "business", "analytics", "reporting"],
+        
+        # Quality terms
+        "expectation": ["expectation", "expect", "validation", "check", "quality check", "rule", "constraint"],
+        "validation": ["validation", "validate", "check", "verify", "expectation", "quality"],
+        "quality": ["quality", "data quality", "validation", "expectation", "check"],
+        
+        # Transformation terms
+        "transform": ["transform", "transformation", "convert", "process", "change", "modify"],
+        "aggregate": ["aggregate", "aggregation", "summarize", "summary", "group", "rollup"],
+        "filter": ["filter", "where", "condition", "select"],
+        "join": ["join", "merge", "combine", "link"],
+        
+        # Data terms
+        "schema": ["schema", "structure", "columns", "fields", "definition"],
+        "table": ["table", "dataset", "data", "source"],
+        "column": ["column", "field", "attribute", "property"],
+        
+        # Operation terms
+        "ingest": ["ingest", "ingestion", "load", "import", "input"],
+        "clean": ["clean", "cleanse", "sanitize", "validate", "filter"],
+        "process": ["process", "processing", "transform", "compute"],
+    }
+
+
+def expand_keywords_with_synonyms(keywords: str, synonym_map: Dict[str, List[str]]) -> set:
+    """
+    Expand keywords using a synonym mapping.
+    
+    Args:
+        keywords: Space-separated keywords
+        synonym_map: Dictionary of base terms to synonym lists
+        
+    Returns:
+        Set of expanded keywords including synonyms
+    """
+    expanded = set()
+    
+    for kw in keywords.split():
+        kw_lower = kw.lower()
+        found = False
+        
+        # Check if keyword matches any synonym group
+        for base, syns in synonym_map.items():
+            if kw_lower in syns:
+                expanded.update(syns)
+                found = True
+                break
+        
+        # If no match, add the original keyword
+        if not found:
+            expanded.add(kw_lower)
+    
+    return expanded
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # CORE CHATBOT FUNCTIONS
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -217,28 +314,8 @@ def search_errors(keywords: str, layer: Optional[str] = None, limit: int = 10) -
     Returns:
         DataFrame with matching errors
     """
-    # Synonym mapping for common error-related words
-    synonym_map = {
-        "error": ["error", "failure", "issue", "problem", "bug", "fault", "incident", "mistake", "crash", "exception", "broken", "wrong", "fail", "failuer"],
-        "failure": ["failure", "error", "fail", "issue", "problem", "bug", "crash", "exception", "broken", "fault"],
-        "issue": ["issue", "error", "problem", "failure", "bug"],
-        "problem": ["problem", "error", "issue", "failure", "bug", "exception"],
-        "bug": ["bug", "error", "issue", "failure", "problem"],
-        "fail": ["fail", "failure", "error", "problem", "broken", "exception", "crash"],
-    }
-    
-    # Expand keywords using synonyms
-    expanded_keywords = set()
-    for kw in keywords.split():
-        kw_lower = kw.lower()
-        found = False
-        for base, syns in synonym_map.items():
-            if kw_lower in syns:
-                expanded_keywords.update(syns)
-                found = True
-                break
-        if not found:
-            expanded_keywords.add(kw_lower)
+    # Expand keywords using error synonyms
+    expanded_keywords = expand_keywords_with_synonyms(keywords, get_error_synonyms())
     
     # Build query with expanded keywords
     query = f"""
@@ -303,7 +380,7 @@ def get_common_errors(limit: int = 10) -> pd.DataFrame:
 
 def search_documentation(keywords: str, limit: int = 5) -> pd.DataFrame:
     """
-    Search documentation_source table for relevant docs.
+    Search documentation_source table for relevant docs with smart synonym expansion.
     
     Args:
         keywords: Search terms
@@ -312,14 +389,10 @@ def search_documentation(keywords: str, limit: int = 5) -> pd.DataFrame:
     Returns:
         DataFrame with matching documentation
     """
-    # For basic keyword search - search for each keyword separately
-    keyword_list = keywords.split()
-    keyword_conditions = []
-    for kw in keyword_list:
-        keyword_conditions.append(f"(text LIKE '%{kw}%' OR category LIKE '%{kw}%')")
+    # Expand keywords using documentation synonyms
+    expanded_keywords = expand_keywords_with_synonyms(keywords, get_documentation_synonyms())
     
-    where_clause = " OR ".join(keyword_conditions) if keyword_conditions else "1=1"
-    
+    # Build query with expanded keywords
     query = f"""
     SELECT 
         id,
@@ -327,7 +400,21 @@ def search_documentation(keywords: str, limit: int = 5) -> pd.DataFrame:
         text,
         source_doc
     FROM retail_demo.rag.documentation_source
-    WHERE {where_clause}
+    WHERE 1=1
+    """
+    
+    # Add keyword filter
+    if expanded_keywords:
+        keyword_conditions = []
+        for kw in expanded_keywords:
+            keyword_conditions.append(f"(text LIKE '%{kw}%' OR category LIKE '%{kw}%')")
+        if keyword_conditions:
+            query += " AND (" + " OR ".join(keyword_conditions) + ")"
+    else:
+        # Fallback: no filter
+        query += " AND 1=1"
+    
+    query += f"""
     LIMIT {limit}
     """
     
@@ -906,7 +993,7 @@ def main():
                     for layer, count in stats['by_layer'].items():
                         st.write(f"🔹 {layer.title()}: {count}")
             
-            except Exception as e:
+            except Exception:
                 st.warning("Could not load statistics")
         
         st.divider()
