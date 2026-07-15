@@ -347,7 +347,7 @@ def get_error_stats() -> Dict:
 
 def detect_intent(message: str) -> str:
     """
-    Detect user intent from message.
+    Detect user intent from message with better accuracy.
     
     Args:
         message: User message
@@ -357,14 +357,19 @@ def detect_intent(message: str) -> str:
     """
     message_lower = message.lower()
     
-    # Error-related keywords
-    error_keywords = ['error', 'fail', 'issue', 'problem', 'bug', 'broken', 'wrong', 'today', 'happened']
-    if any(keyword in message_lower for keyword in error_keywords):
+    # Strong error indicators - these always mean error intent
+    strong_error_keywords = ['error', 'fail', 'issue', 'problem', 'bug', 'broken', 'wrong']
+    if any(keyword in message_lower for keyword in strong_error_keywords):
         return 'errors'
     
-    # Documentation keywords
-    doc_keywords = ['how', 'what', 'explain', 'documentation', 'example', 'show me', 'difference', 'best practice']
-    if any(keyword in message_lower for keyword in doc_keywords):
+    # If asking "what happened" or "what...today" - it's about errors
+    if 'happened' in message_lower or ('today' in message_lower and 'what' in message_lower):
+        return 'errors'
+    
+    # Strong documentation indicators - asking HOW to do something
+    doc_patterns = ['how to', 'how do', 'how can', 'explain ', 'what is ', 'what does', 
+                    'difference between', 'best practice', 'show me example']
+    if any(pattern in message_lower for pattern in doc_patterns):
         return 'documentation'
     
     return 'general'
@@ -382,7 +387,8 @@ def extract_keywords(message: str) -> List[str]:
     """
     # Remove common stop words
     stop_words = ['the', 'a', 'an', 'is', 'are', 'was', 'were', 'what', 'how', 'why', 
-                  'my', 'me', 'i', 'can', 'do', 'does', 'in', 'on', 'at', 'to', 'for']
+                  'my', 'me', 'i', 'can', 'do', 'does', 'in', 'on', 'at', 'to', 'for',
+                  'today', 'happened', 'show', 'tell']
     
     # Extract words
     words = re.findall(r'\b\w+\b', message.lower())
@@ -441,14 +447,15 @@ def format_doc_response(docs_df: pd.DataFrame, conversational: bool = True) -> s
         
         for idx, row in docs_df.iterrows():
             content = row['text']
-            # Truncate very long content intelligently
-            if len(content) > 600:
+            # Truncate very long content intelligently - DON'T show incomplete sentences
+            if len(content) > 400:
                 # Find a good breaking point (end of sentence)
-                truncate_at = content[:600].rfind('.')
-                if truncate_at > 400:
-                    content = content[:truncate_at + 1] + "\n\n*[Truncated for readability]*"
+                truncate_at = content[:400].rfind('.')
+                if truncate_at > 200:
+                    content = content[:truncate_at + 1]
                 else:
-                    content = content[:600] + "..."
+                    # If no sentence end found, just cut at 400 and add ellipsis
+                    content = content[:400] + "..."
             
             response += f"{content}\n\n"
         
@@ -494,33 +501,26 @@ def generate_response(user_message: str) -> str:
     
     # Handle based on intent
     if intent == 'errors':
-        # User is asking about errors
+        # User is asking about errors - DON'T show documentation unless explicitly requested
         with st.spinner("🔍 Searching error logs..."):
             errors_df = search_errors(keywords_str, limit=5)
             
             if errors_df is None or errors_df.empty:
-                # No errors found - give helpful, contextual response
+                # No errors found - give helpful, contextual response WITHOUT documentation
                 if "today" in message_lower:
                     response = "✅ **Great news!** No errors were logged today. Your pipeline is running smoothly! 🎉"
                 elif keywords_str:
                     response = f"✅ No errors found matching '**{keywords_str}**'. Your pipeline appears to be healthy for this query."
                 else:
                     response = "✅ No recent errors found. Everything looks good!"
-                
-                # Only add documentation if user explicitly asked "how" or "what"
-                if any(word in message_lower for word in ['how', 'what', 'why', 'explain']):
-                    docs_df = search_documentation(keywords_str, limit=2)
-                    if docs_df is not None and not docs_df.empty:
-                        response += "\n\nHere's some relevant information:\n\n"
-                        response += format_doc_response(docs_df, conversational=True)
             else:
                 # Found errors - show them
                 response = format_error_response(errors_df)
     
     elif intent == 'documentation':
-        # User wants documentation/how-to
+        # User explicitly wants documentation/how-to
         with st.spinner("📚 Searching documentation..."):
-            docs_df = search_documentation(keywords_str, limit=5)
+            docs_df = search_documentation(keywords_str, limit=3)
             
             if docs_df is None or docs_df.empty:
                 response = f"I couldn't find documentation about '**{keywords_str}**'. \n\nTry asking about:\n- Data quality checks (expect_or_drop, expect_or_fail)\n- Pipeline architecture (bronze, silver, gold layers)\n- Common troubleshooting scenarios"
@@ -536,7 +536,7 @@ def generate_response(user_message: str) -> str:
                     response += format_error_response(errors_df)
     
     else:
-        # General query
+        # General query - search both but be smart about it
         with st.spinner("🤔 Thinking..."):
             errors_df = search_errors(keywords_str, limit=3)
             docs_df = search_documentation(keywords_str, limit=3)
