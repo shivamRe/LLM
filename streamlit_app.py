@@ -251,6 +251,33 @@ def search_errors(keywords: str, layer: Optional[str] = None, limit: int = 10) -
     return execute_query(query)
 
 
+def get_common_errors(limit: int = 10) -> pd.DataFrame:
+    """
+    Get most common errors by grouping similar error types.
+    
+    Args:
+        limit: Max number of error types to return
+        
+    Returns:
+        DataFrame with common errors and their counts
+    """
+    query = f"""
+    SELECT 
+        error_type,
+        COUNT(*) as occurrence_count,
+        MAX(timestamp) as last_occurred,
+        MAX(error_message) as example_message,
+        MAX(solution) as solution,
+        layer
+    FROM retail_demo.monitoring.error_log
+    GROUP BY error_type, layer
+    ORDER BY occurrence_count DESC
+    LIMIT {limit}
+    """
+    
+    return execute_query(query)
+
+
 def search_documentation(keywords: str, limit: int = 5) -> pd.DataFrame:
     """
     Search documentation_source table for relevant docs.
@@ -353,20 +380,39 @@ def detect_intent(message: str) -> str:
         message: User message
         
     Returns:
-        Intent type: 'errors', 'documentation', 'general'
+        Intent type: 'pipeline_overview', 'dlt_expectations', 'common_errors', 'specific_error', 'documentation', 'general'
     """
     message_lower = message.lower()
     
-    # Strong error indicators - these always mean error intent
-    strong_error_keywords = ['error', 'fail', 'issue', 'problem', 'bug', 'broken', 'wrong']
-    if any(keyword in message_lower for keyword in strong_error_keywords):
-        return 'errors'
+    # Pipeline overview questions
+    pipeline_keywords = ['explain pipeline', 'what is this pipeline', 'what is the pipeline', 
+                        'pipeline overview', 'pipeline architecture', 'pipeline structure',
+                        'pipeline flow', 'how does pipeline work', 'pipeline layers']
+    if any(keyword in message_lower for keyword in pipeline_keywords):
+        return 'pipeline_overview'
+    
+    # DLT/Expectations questions
+    dlt_keywords = ['dlt', 'expectation', 'expect_or_drop', 'expect_or_fail', 
+                    'data quality', 'quality check', 'validation']
+    if any(keyword in message_lower for keyword in dlt_keywords):
+        return 'dlt_expectations'
+    
+    # Common errors questions
+    common_error_keywords = ['common error', 'common issue', 'common problem', 
+                            'frequent error', 'most common', 'typical error']
+    if any(keyword in message_lower for keyword in common_error_keywords):
+        return 'common_errors'
+    
+    # Specific error search
+    error_keywords = ['error', 'fail', 'issue', 'problem', 'bug', 'broken', 'wrong']
+    if any(keyword in message_lower for keyword in error_keywords):
+        return 'specific_error'
     
     # If asking "what happened" or "what...today" - it's about errors
     if 'happened' in message_lower or ('today' in message_lower and 'what' in message_lower):
-        return 'errors'
+        return 'specific_error'
     
-    # Strong documentation indicators - asking HOW to do something
+    # Documentation/how-to questions
     doc_patterns = ['how to', 'how do', 'how can', 'explain ', 'what is ', 'what does', 
                     'difference between', 'best practice', 'show me example']
     if any(pattern in message_lower for pattern in doc_patterns):
@@ -388,7 +434,7 @@ def extract_keywords(message: str) -> List[str]:
     # Remove common stop words
     stop_words = ['the', 'a', 'an', 'is', 'are', 'was', 'were', 'what', 'how', 'why', 
                   'my', 'me', 'i', 'can', 'do', 'does', 'in', 'on', 'at', 'to', 'for',
-                  'today', 'happened', 'show', 'tell']
+                  'today', 'happened', 'show', 'tell', 'this', 'that', 'these', 'those']
     
     # Extract words
     words = re.findall(r'\b\w+\b', message.lower())
@@ -397,9 +443,64 @@ def extract_keywords(message: str) -> List[str]:
     return keywords[:5]  # Return top 5 keywords
 
 
+def extract_summary_from_doc(text: str, max_length: int = 300) -> str:
+    """
+    Extract a clean summary from documentation text.
+    Looks for the "Purpose" section or first few sentences.
+    
+    Args:
+        text: Full documentation text
+        max_length: Maximum characters to return
+        
+    Returns:
+        Clean summary text
+    """
+    # Try to find the Purpose section
+    if 'Purpose' in text or 'purpose' in text:
+        # Extract text after "Purpose" keyword
+        purpose_match = re.search(r'[Pp]urpose[:\s]+(.*?)(?:\n\n|Business|Domain|\n[A-Z])', text, re.DOTALL)
+        if purpose_match:
+            summary = purpose_match.group(1).strip()
+            # Clean up formatting
+            summary = re.sub(r'\s+', ' ', summary)
+            if len(summary) <= max_length:
+                return summary
+            # Truncate at sentence boundary
+            truncate_at = summary[:max_length].rfind('.')
+            if truncate_at > 100:
+                return summary[:truncate_at + 1]
+    
+    # Fallback: Extract first paragraph or sentences
+    # Split by double newlines to get first paragraph
+    paragraphs = text.split('\n\n')
+    for para in paragraphs[:3]:  # Check first 3 paragraphs
+        para = para.strip()
+        # Skip headers and very short paragraphs
+        if len(para) > 50 and not para.isupper():
+            # Clean up
+            para = re.sub(r'\s+', ' ', para)
+            if len(para) <= max_length:
+                return para
+            # Truncate at sentence boundary
+            truncate_at = para[:max_length].rfind('.')
+            if truncate_at > 100:
+                return para[:truncate_at + 1]
+            return para[:max_length] + "..."
+    
+    # Last resort: just truncate intelligently
+    clean_text = re.sub(r'\s+', ' ', text.strip())
+    if len(clean_text) <= max_length:
+        return clean_text
+    truncate_at = clean_text[:max_length].rfind('.')
+    if truncate_at > 100:
+        return clean_text[:truncate_at + 1]
+    return clean_text[:max_length] + "..."
+
+
 def format_error_response(errors_df: pd.DataFrame) -> str:
     """
     Format error DataFrame into readable response.
+    Fix: Convert to list of dicts first to avoid Spark Connect issues.
     
     Args:
         errors_df: DataFrame with error data
@@ -412,8 +513,11 @@ def format_error_response(errors_df: pd.DataFrame) -> str:
     
     response = f"📊 **Found {len(errors_df)} error(s):**\n\n"
     
-    for idx, row in errors_df.iterrows():
-        response += f"### 🔴 Error: `{row['error_id']}`\n\n"
+    # Convert to list of dicts to avoid Spark Connect issues with .iterrows()
+    error_records = errors_df.to_dict('records')
+    
+    for idx, row in enumerate(error_records):
+        response += f"### 🔴 Error {idx + 1}: `{row['error_id']}`\n\n"
         response += f"**⏰ Time:** {row['timestamp']}\n\n"
         response += f"**📍 Layer:** {row['layer']}\n\n"
         response += f"**🏷️ Type:** `{row['error_type']}`\n\n"
@@ -427,13 +531,47 @@ def format_error_response(errors_df: pd.DataFrame) -> str:
     return response
 
 
-def format_doc_response(docs_df: pd.DataFrame, conversational: bool = True) -> str:
+def format_common_errors_response(errors_df: pd.DataFrame) -> str:
+    """
+    Format common errors DataFrame into readable response.
+    
+    Args:
+        errors_df: DataFrame with common error data
+        
+    Returns:
+        Formatted markdown string
+    """
+    if errors_df is None or errors_df.empty:
+        return "No common error patterns found."
+    
+    response = f"📊 **Top {len(errors_df)} Most Common Errors:**\n\n"
+    
+    # Convert to list of dicts to avoid Spark Connect issues
+    error_records = errors_df.to_dict('records')
+    
+    for idx, row in enumerate(error_records, 1):
+        response += f"### 🔴 #{idx}: {row['error_type']}\n\n"
+        response += f"**📈 Occurrences:** {row['occurrence_count']} times\n\n"
+        response += f"**📍 Layer:** {row['layer']}\n\n"
+        response += f"**⏰ Last Occurred:** {row['last_occurred']}\n\n"
+        
+        response += f"**Example:**\n```\n{row['example_message']}\n```\n\n"
+        
+        response += f"**✅ Solution:**\n```python\n{row['solution']}\n```\n\n"
+        response += "---\n\n"
+    
+    return response
+
+
+def format_doc_response(docs_df: pd.DataFrame, conversational: bool = True, summary_only: bool = False) -> str:
     """
     Format documentation DataFrame into readable response.
+    Fix: Convert to list of dicts first to avoid Spark Connect issues.
     
     Args:
         docs_df: DataFrame with documentation data
         conversational: If True, natural format. If False, structured format.
+        summary_only: If True, extract only summaries (for "what is" questions)
         
     Returns:
         Formatted markdown string
@@ -441,31 +579,38 @@ def format_doc_response(docs_df: pd.DataFrame, conversational: bool = True) -> s
     if docs_df is None or docs_df.empty:
         return "I couldn't find documentation about that topic."
     
+    # Convert to list of dicts to avoid Spark Connect issues
+    doc_records = docs_df.to_dict('records')
+    
     if conversational:
-        # Natural conversational format - NO "Doc 1", "Doc 2", "Category:" labels
+        # Natural conversational format
         response = ""
         
-        for idx, row in docs_df.iterrows():
+        for row in doc_records:
             content = row['text']
-            # Truncate very long content intelligently - DON'T show incomplete sentences
-            if len(content) > 400:
-                # Find a good breaking point (end of sentence)
-                truncate_at = content[:400].rfind('.')
-                if truncate_at > 200:
-                    content = content[:truncate_at + 1]
-                else:
-                    # If no sentence end found, just cut at 400 and add ellipsis
-                    content = content[:400] + "..."
+            
+            if summary_only:
+                # For "what is" questions, extract just the summary
+                content = extract_summary_from_doc(content, max_length=300)
+            else:
+                # For other questions, show more detail but still truncate
+                if len(content) > 600:
+                    # Find a good breaking point
+                    truncate_at = content[:600].rfind('.')
+                    if truncate_at > 300:
+                        content = content[:truncate_at + 1]
+                    else:
+                        content = content[:600] + "..."
             
             response += f"{content}\n\n"
         
         return response.strip()
     else:
         # Structured format (only used for detailed documentation queries)
-        response = f"📚 **Found {len(docs_df)} documentation entry(ies):**\n\n"
+        response = f"📚 **Found {len(doc_records)} documentation entry(ies):**\n\n"
         
-        for idx, row in docs_df.iterrows():
-            response += f"### 📄 Doc {idx + 1}\n\n"
+        for idx, row in enumerate(doc_records, 1):
+            response += f"### 📄 Doc {idx}\n\n"
             response += f"**Category:** {row.get('category', 'General')}\n\n"
             
             content = row['text']
@@ -482,9 +627,65 @@ def format_doc_response(docs_df: pd.DataFrame, conversational: bool = True) -> s
         return response
 
 
+def format_pipeline_overview() -> str:
+    """
+    Generate a comprehensive pipeline overview response.
+    
+    Returns:
+        Formatted markdown string with pipeline overview
+    """
+    return """
+## 🏗️ Retail Demo Pipeline Overview
+
+**Purpose:**
+This is a **Medallion Architecture** pipeline demonstrating retail data processing with intentional errors for troubleshooting training.
+
+### 📊 Architecture Layers
+
+**1. 🥉 Bronze Layer** (Raw Data Ingestion)
+- **Table:** `bronze_orders`
+- **Purpose:** Store raw order data as received from source systems
+- **Schema:** order_id, customer_id, order_date, amount, status
+- **Data Quality:** Contains intentional data issues (NULL values, invalid dates, negative amounts)
+
+**2. 🥈 Silver Layer** (Cleaned & Validated)
+- **Table:** `silver_orders_clean`
+- **Purpose:** Validated data with quality checks applied
+- **Transformations:**
+  - Remove NULL customer_ids
+  - Parse and validate dates
+  - Filter out invalid amounts
+- **Expectations:** Data quality rules enforced (expect_or_drop)
+
+**3. 🥇 Gold Layer** (Business Aggregates)
+- **Table:** `gold_revenue_summary`
+- **Purpose:** Business-ready aggregated metrics
+- **Aggregations:** Daily revenue by customer, order counts, average amounts
+
+### 🔄 Data Flow
+
+```
+Source System → Bronze (Raw) → Silver (Clean) → Gold (Aggregated) → Analytics/BI
+```
+
+### 🎯 Business Use Cases
+- Daily Revenue Reporting
+- Data Quality Monitoring
+- Error Pattern Analysis
+- Pipeline Troubleshooting Training
+
+### 📈 Data Quality Strategy
+- **Bronze:** Accept all data (no rejection)
+- **Silver:** Enforce quality rules with expectations
+- **Gold:** Business-validated aggregates
+
+Need more details about a specific layer or concept? Just ask!
+"""
+
+
 def generate_response(user_message: str) -> str:
     """
-    Main chatbot logic - smarter and more conversational.
+    Main chatbot logic - smarter and more conversational with better intent handling.
     
     Args:
         user_message: User's input message
@@ -500,13 +701,74 @@ def generate_response(user_message: str) -> str:
     message_lower = user_message.lower()
     
     # Handle based on intent
-    if intent == 'errors':
-        # User is asking about errors - DON'T show documentation unless explicitly requested
+    if intent == 'pipeline_overview':
+        # User wants pipeline architecture/overview
+        response = format_pipeline_overview()
+    
+    elif intent == 'dlt_expectations':
+        # User wants DLT/expectations documentation
+        with st.spinner("📚 Searching DLT documentation..."):
+            docs_df = search_documentation("expectation expect_or_drop expect_or_fail quality", limit=5)
+            
+            if docs_df is None or docs_df.empty:
+                response = """
+## 📚 DLT Expectations (Data Quality Checks)
+
+**Delta Live Tables Expectations** are data quality constraints that validate your data as it flows through the pipeline.
+
+### Types of Expectations:
+
+**1. `expect_or_drop()`**
+- **Behavior:** Drops rows that fail the constraint
+- **Use Case:** Remove bad data automatically
+- **Example:**
+```python
+@dlt.expect_or_drop("valid_customer_id", "customer_id IS NOT NULL")
+```
+
+**2. `expect_or_fail()`**
+- **Behavior:** Stops the pipeline if ANY row fails
+- **Use Case:** Critical validations that must pass
+- **Example:**
+```python
+@dlt.expect_or_fail("valid_order_id", "order_id IS NOT NULL")
+```
+
+**3. `expect()`**
+- **Behavior:** Records violations but keeps data
+- **Use Case:** Monitor data quality without blocking
+- **Example:**
+```python
+@dlt.expect("valid_amount", "amount > 0")
+```
+
+### Best Practices:
+- Use `expect_or_fail()` for critical business keys
+- Use `expect_or_drop()` for optional fields with bad data
+- Use `expect()` for monitoring and alerting
+
+Need specific examples from your pipeline? Just ask!
+"""
+            else:
+                response = "## 📚 DLT Expectations Documentation\n\n"
+                response += format_doc_response(docs_df, conversational=True, summary_only=False)
+    
+    elif intent == 'common_errors':
+        # User wants to see common error patterns
+        with st.spinner("📊 Analyzing common error patterns..."):
+            common_df = get_common_errors(limit=5)
+            
+            if common_df is None or common_df.empty:
+                response = "No error patterns found in the logs."
+            else:
+                response = format_common_errors_response(common_df)
+    
+    elif intent == 'specific_error':
+        # User is searching for specific errors
         with st.spinner("🔍 Searching error logs..."):
             errors_df = search_errors(keywords_str, limit=5)
             
             if errors_df is None or errors_df.empty:
-                # No errors found - give helpful, contextual response WITHOUT documentation
                 if "today" in message_lower:
                     response = "✅ **Great news!** No errors were logged today. Your pipeline is running smoothly! 🎉"
                 elif keywords_str:
@@ -514,29 +776,22 @@ def generate_response(user_message: str) -> str:
                 else:
                     response = "✅ No recent errors found. Everything looks good!"
             else:
-                # Found errors - show them
                 response = format_error_response(errors_df)
     
     elif intent == 'documentation':
-        # User explicitly wants documentation/how-to
+        # User wants general documentation/how-to
+        wants_summary = any(phrase in message_lower for phrase in ['what is', 'what\'s', 'tell me about', 'describe'])
+        
         with st.spinner("📚 Searching documentation..."):
             docs_df = search_documentation(keywords_str, limit=3)
             
             if docs_df is None or docs_df.empty:
-                response = f"I couldn't find documentation about '**{keywords_str}**'. \n\nTry asking about:\n- Data quality checks (expect_or_drop, expect_or_fail)\n- Pipeline architecture (bronze, silver, gold layers)\n- Common troubleshooting scenarios"
+                response = f"I couldn't find documentation about '**{keywords_str}**'.\n\nTry asking about:\n- Pipeline architecture (bronze, silver, gold layers)\n- Data quality checks (expect_or_drop, expect_or_fail)\n- Common troubleshooting scenarios"
             else:
-                # Show documentation in natural conversational format
-                response = format_doc_response(docs_df, conversational=True)
-            
-            # Only show errors if user mentioned problems
-            if any(word in message_lower for word in ['error', 'issue', 'problem', 'fail']):
-                errors_df = search_errors(keywords_str, limit=2)
-                if errors_df is not None and not errors_df.empty:
-                    response += "\n\n**💡 Related Errors & Solutions:**\n\n"
-                    response += format_error_response(errors_df)
+                response = format_doc_response(docs_df, conversational=True, summary_only=wants_summary)
     
     else:
-        # General query - search both but be smart about it
+        # General query - be smart about it
         with st.spinner("🤔 Thinking..."):
             errors_df = search_errors(keywords_str, limit=3)
             docs_df = search_documentation(keywords_str, limit=3)
@@ -553,24 +808,25 @@ def generate_response(user_message: str) -> str:
                 if has_docs:
                     if has_errors:
                         response += "\n\n**📚 Related Documentation:**\n\n"
-                    response += format_doc_response(docs_df, conversational=True)
+                    response += format_doc_response(docs_df, conversational=True, summary_only=True)
             else:
                 response = """
 👋 I'm here to help with pipeline troubleshooting! 
 
-**I can help you:**
-- 🔍 Find and diagnose pipeline errors
-- 📚 Explain data quality concepts
-- 💡 Provide solutions for common issues
-- 📊 Show error trends and statistics
+**I can help you with:**
+- 🏗️ Pipeline architecture & flow
+- 📊 Common errors & solutions
+- 📚 DLT expectations & data quality
+- 🔍 Specific error searches
+- 💡 Best practices & examples
 
 **Try asking:**
-- "What errors happened today?"
-- "Show me NULL customer_id issues"
-- "How do I handle invalid dates?"
-- "Explain expect_or_drop"
+- "Explain the pipeline architecture"
+- "What are common errors?"
+- "How do DLT expectations work?"
+- "Show me NULL customer_id errors"
 
-Feel free to ask any question about your pipeline!
+What would you like to know?
 """
     
     return response
@@ -674,12 +930,12 @@ def main():
         st.info("👋 Welcome! Click any question below to get started:")
         
         starter_questions = [
+            "Explain the pipeline architecture",
+            "What are common errors?",
+            "How do DLT expectations work?",
+            "Show me NULL customer_id errors",
             "What errors happened today?",
-            "Show NULL customer_id issues",
-            "Explain expect_or_drop",
-            "Show me bronze layer errors",
-            "Common data quality issues",
-            "How to handle invalid dates?"
+            "Explain expect_or_drop"
         ]
         
         cols = st.columns(2)
