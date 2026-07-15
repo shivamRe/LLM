@@ -869,12 +869,13 @@ def main():
             
             try:
                 stats = get_error_stats()
-                col1, col2 = st.columns(2)
+                # Rename variable to avoid false positive lint warning
+                metric_cols = st.columns(2)
                 
-                with col1:
+                with metric_cols[0]:
                     st.metric("Total Errors", stats['total'])
                 
-                with col2:
+                with metric_cols[1]:
                     st.metric("Open Errors", stats['open'])
                 
                 if stats['by_layer']:
@@ -938,9 +939,10 @@ def main():
             "Explain expect_or_drop"
         ]
         
-        cols = st.columns(2)
+        # Rename variable to avoid false positive lint warning
+        question_cols = st.columns(2)
         for idx, question in enumerate(starter_questions):
-            with cols[idx % 2]:
+            with question_cols[idx % 2]:
                 if st.button(question, key=f"starter_{idx}"):
                     # Add user message
                     st.session_state.messages.append({"role": "user", "content": question})
