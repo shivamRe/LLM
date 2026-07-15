@@ -207,38 +207,16 @@ def execute_query(query: str) -> Optional[pd.DataFrame]:
 
 def search_errors(keywords: str, layer: Optional[str] = None, limit: int = 10) -> pd.DataFrame:
     """
-    Search error_log table for matching errors. Smarter: expands synonyms for better coverage.
+    Search error_log table for matching errors.
+    
     Args:
         keywords: Search terms for error messages
         layer: Filter by layer (bronze/silver/gold) or None for all
         limit: Max number of results
+        
     Returns:
         DataFrame with matching errors
     """
-    # Synonym mapping for common error-related words
-    synonym_map = {
-        "error": ["error", "failure", "issue", "problem", "bug", "fault", "incident", "mistake", "crash", "exception", "broken", "wrong", "fail", "failuer"],
-        "failure": ["failure", "error", "fail", "issue", "problem", "bug", "crash", "exception", "broken", "fault"],
-        "issue": ["issue", "error", "problem", "failure", "bug"],
-        "problem": ["problem", "error", "issue", "failure", "bug", "exception"],
-        "bug": ["bug", "error", "issue", "failure", "problem"],
-        "fail": ["fail", "failure", "error", "problem", "broken", "exception", "crash"],
-    }
-
-    # Expand keywords using synonyms
-    expanded_keywords = set()
-    for kw in keywords.split():
-        found = False
-        for base, syns in synonym_map.items():
-            if kw.lower() in syns:
-                expanded_keywords.update(syns)
-                found = True
-                break
-        if not found:
-            expanded_keywords.add(kw.lower())
-    keyword_conditions = []
-    for kw in expanded_keywords:
-        keyword_conditions.append(f"(error_message LIKE '%{kw}%' OR error_type LIKE '%{kw}%')")
     query = f"""
     SELECT 
         error_id,
@@ -251,14 +229,26 @@ def search_errors(keywords: str, layer: Optional[str] = None, limit: int = 10) -
     FROM retail_demo.monitoring.error_log
     WHERE 1=1
     """
-    if keyword_conditions:
-        query += " AND (" + " OR ".join(keyword_conditions) + ")"
+    
+    # Add keyword filter - search for each keyword separately
+    if keywords:
+        keyword_list = keywords.split()
+        keyword_conditions = []
+        for kw in keyword_list:
+            keyword_conditions.append(f"(error_message LIKE '%{kw}%' OR error_type LIKE '%{kw}%')")
+        if keyword_conditions:
+            query += " AND (" + " OR ".join(keyword_conditions) + ")"
+    
+    # Add layer filter
     if layer:
         query += f" AND layer = '{layer}'"
+    
     query += f"""
     ORDER BY timestamp DESC
     LIMIT {limit}
     """
+    
+    return execute_query(query)
 
 
 def get_common_errors(limit: int = 10) -> pd.DataFrame:
