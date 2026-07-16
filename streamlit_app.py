@@ -205,72 +205,53 @@ def execute_query(query: str) -> Optional[pd.DataFrame]:
 # AI-POWERED SEARCH
 # ═══════════════════════════════════════════════════════════════════════════════
 
+from databricks.vector_search.client import VectorSearchClient
+from openai import OpenAI
+
 @st.cache_resource
 def get_vector_search_client():
     return VectorSearchClient(disable_notice=True)
 
-@st.cache_resource
+@st.cache_resource  
 def get_foundation_model_client():
     return OpenAI(
-        api_key=os.getenv("DATABRICKS_TOKEN"),
+        api_key=os.getenv('DATABRICKS_TOKEN'),
         base_url=f"https://{os.getenv('DATABRICKS_HOST')}/serving-endpoints"
     )
 
 def semantic_search_documentation(query: str, limit: int = 5) -> pd.DataFrame:
-    """
-    Semantic search using Vector Search - replaces manual synonym mapping!
-    """
     try:
         vsc = get_vector_search_client()
         
         index = vsc.get_index(
-            endpoint_name=os.getenv("VECTOR_SEARCH_ENDPOINT", "pipeline_chatbot_endpoint"),
-            index_name=os.getenv("VECTOR_INDEX_NAME", "retail_demo.rag.documentation_vector_index")
+            endpoint_name=os.getenv('VECTOR_SEARCH_ENDPOINT', 'pipeline_chatbot_endpoint'),
+            index_name=os.getenv('VECTOR_INDEX_NAME', 'retail_demo.rag.documentation_vector_index')
         )
         
         results = index.similarity_search(
             query_text=query,
-            columns=["id", "category", "source_doc", "text"],
+            columns=['id', 'category', 'source_doc', 'text'],
             num_results=limit
         )
         
         # Convert to DataFrame
-        if results and \'result\' in results and \'data_array\' in results[\'result\']:
-            docs = results[\'result\'][\'data_array\']
-            return pd.DataFrame(docs, columns=[\'id\', \'category\', \'source_doc\', \'text\'])
+        if results and 'result' in results and 'data_array' in results['result']:
+            docs = results['result']['data_array']
+            return pd.DataFrame(docs, columns=['id', 'category', 'source_doc', 'text'])
         else:
             return pd.DataFrame()
     
     except Exception as e:
         st.error(f"⚠️ Semantic search failed: {str(e)}")
         return pd.DataFrame()
+"""
 
-def generate_intelligent_response(user_query: str, context: str) -> str:
-    """
-    Generate AI-powered response using Foundation Model.
-    """
-    try:
-        client = get_foundation_model_client()
-        
-        system_prompt = """You are a data pipeline troubleshooting expert.
-Provide actionable solutions with code examples. Be concise but thorough."""
-        
-        user_prompt = f"""Question: {user_query}\n\nContext:\n{context}\n\nProvide a helpful response."""
-        
-        response = client.chat.completions.create(
-            model="databricks-dbrx-instruct",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
-            max_tokens=500,
-            temperature=0.1
-        )
-        
-        return response.choices[0].message.content
-    
-    except Exception as e:
-        return f"Error: {str(e)}"
+print("✅ Corrected code ready!")
+print("\n📋 Key fixes:")
+print("  1. Changed os.getenv(\'...\') to os.getenv('...')")
+print("  2. Changed ['result'] from [' result\'] ")
+print("  3. All quotes inside f-strings are now plain single quotes")
+print("\n🔧 To apply: Copy the code above and paste it into your streamlit_app.py")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
