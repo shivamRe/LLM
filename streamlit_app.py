@@ -270,10 +270,23 @@ def semantic_search_documentation(query: str, limit: int = 5) -> pd.DataFrame:
             num_results=limit
         )
         
-        # Convert to DataFrame
+        # Convert to DataFrame - Vector Search returns results + similarity score
         if results and 'result' in results and 'data_array' in results['result']:
             docs = results['result']['data_array']
-            return pd.DataFrame(docs, columns=['id', 'category', 'source_doc', 'text'])
+            
+            # Vector Search returns: [id, category, source_doc, text, score]
+            # Handle dynamic column count in case the API changes
+            if len(docs) > 0 and len(docs[0]) == 5:
+                # 5 columns: the 4 we requested + similarity score
+                df = pd.DataFrame(docs, columns=['id', 'category', 'source_doc', 'text', 'score'])
+                # Drop score column for consistency with rest of code
+                return df[['id', 'category', 'source_doc', 'text']]
+            elif len(docs) > 0 and len(docs[0]) == 4:
+                # 4 columns: exactly what we requested (no score)
+                return pd.DataFrame(docs, columns=['id', 'category', 'source_doc', 'text'])
+            else:
+                # Unexpected format - return empty
+                return pd.DataFrame()
         else:
             return pd.DataFrame()
     
@@ -1036,9 +1049,9 @@ def main():
             
             stats = get_error_stats()
             
-            col1, col2 = st.columns(2)
-            col1.metric("Total Errors", stats['total'])
-            col2.metric("Open", stats['open'])
+            sidebar_col1, sidebar_col2 = st.columns(2)
+            sidebar_col1.metric("Total Errors", stats['total'])
+            sidebar_col2.metric("Open", stats['open'])
             
             if stats['by_layer']:
                 st.write("**By Layer:**")
@@ -1094,19 +1107,19 @@ def main():
         st.write("### 👋 Welcome! Ask me anything about your pipeline")
         st.write("**Quick Start Questions:**")
         
-        col1, col2, col3 = st.columns(3)
+        main_col1, main_col2, main_col3 = st.columns(3)
         
-        with col1:
+        with main_col1:
             if st.button("🏗️ Explain the pipeline"):
                 st.session_state.messages.append({"role": "user", "content": "Explain the pipeline architecture"})
                 st.rerun()
         
-        with col2:
+        with main_col2:
             if st.button("🔴 Show common errors"):
                 st.session_state.messages.append({"role": "user", "content": "What are the most common errors?"})
                 st.rerun()
         
-        with col3:
+        with main_col3:
             if st.button("📚 DLT expectations"):
                 st.session_state.messages.append({"role": "user", "content": "How do DLT expectations work?"})
                 st.rerun()
