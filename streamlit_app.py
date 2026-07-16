@@ -202,7 +202,7 @@ def execute_query(query: str) -> Optional[pd.DataFrame]:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# SYNONYM MAPPING - CENTRALIZED
+# AI-POWERED SEARCH
 # ═══════════════════════════════════════════════════════════════════════════════
 
 @st.cache_resource
