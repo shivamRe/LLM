@@ -282,6 +282,56 @@ def semantic_search_documentation(query: str, limit: int = 5) -> pd.DataFrame:
         return pd.DataFrame()  # Fallback to keyword search
 
 
+def extract_corrected_keywords(semantic_results: pd.DataFrame, max_keywords: int = 5) -> str:
+    """
+    Extract corrected keywords from semantic search results to fix typos.
+    
+    This is the "typo correction layer" - it uses semantic understanding to figure out
+    what the user MEANT to type, even if they misspelled it.
+    
+    Args:
+        semantic_results: DataFrame from semantic_search_documentation
+        max_keywords: Maximum number of keywords to extract
+        
+    Returns:
+        Space-separated string of corrected keywords
+        
+    Example:
+        User types: "failuer yesterday"
+        Semantic search finds docs about "failure" and "errors"
+        Returns: "failure error"
+    """
+    if semantic_results.empty:
+        return ""
+    
+    # Extract keywords from categories and key phrases in text
+    keywords = set()
+    
+    for _, row in semantic_results.iterrows():
+        # Add category keywords
+        category = row.get('category', '').lower()
+        if category:
+            # Split category by spaces and underscores
+            category_words = re.findall(r'\b\w+\b', category)
+            keywords.update([w for w in category_words if len(w) > 3])
+        
+        # Extract key terms from text (look for important nouns/concepts)
+        text = row.get('text', '').lower()
+        
+        # Look for common error-related terms in the text
+        error_terms = ['error', 'failure', 'null', 'invalid', 'missing', 'expectation', 
+                       'drop', 'customer_id', 'order_id', 'validation', 'quality',
+                       'bronze', 'silver', 'gold', 'pipeline', 'constraint']
+        
+        for term in error_terms:
+            if term in text:
+                keywords.add(term)
+    
+    # Return top keywords (sorted by length to prefer longer, more specific terms)
+    keywords_list = sorted(list(keywords), key=len, reverse=True)[:max_keywords]
+    return " ".join(keywords_list)
+
+
 # CORE CHATBOT FUNCTIONS
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -781,6 +831,7 @@ Need more details about a specific layer or concept? Just ask!
 def generate_response(user_message: str) -> str:
     """
     Main chatbot logic - smarter and more conversational with better intent handling.
+    NOW WITH TYPO-TOLERANT ERROR SEARCH using AI semantic understanding!
     
     Args:
         user_message: User's input message
@@ -859,18 +910,39 @@ Need specific examples from your pipeline? Just ask!
                 response = format_common_errors_response(common_df)
     
     elif intent == 'specific_error':
-        # User is searching for specific errors
+        # User is searching for specific errors - NOW WITH TYPO CORRECTION!
         with st.spinner("🔍 Searching error logs..."):
             errors_df = search_errors(keywords_str, limit=5)
             
-            if errors_df is None or errors_df.empty:
+            # If no results, try AI-powered typo correction
+            if (errors_df is None or errors_df.empty) and AI_ENABLED and keywords_str:
+                with st.spinner("🤖 Using AI to understand your query..."):
+                    # Use semantic search to understand what they meant
+                    semantic_docs = semantic_search_documentation(user_message, limit=3)
+                    
+                    if not semantic_docs.empty:
+                        # Extract corrected keywords from semantic results
+                        corrected_keywords = extract_corrected_keywords(semantic_docs)
+                        
+                        if corrected_keywords and corrected_keywords != keywords_str:
+                            # Retry error search with corrected keywords
+                            errors_df = search_errors(corrected_keywords, limit=5)
+                            
+                            # If we found errors now, mention the correction
+                            if errors_df is not None and not errors_df.empty:
+                                response = f"💡 _I interpreted your query as: **{corrected_keywords}**_\n\n"
+                                response += format_error_response(errors_df)
+            
+            # Still no results after AI correction?
+            if (errors_df is None or errors_df.empty) and not response:
                 if "today" in message_lower:
                     response = "✅ **Great news!** No errors were logged today. Your pipeline is running smoothly! 🎉"
                 elif keywords_str:
                     response = f"✅ No errors found matching '**{keywords_str}**'. Your pipeline appears to be healthy for this query."
                 else:
                     response = "✅ No recent errors found. Everything looks good!"
-            else:
+            elif not response:
+                # We found errors on first try
                 response = format_error_response(errors_df)
     
     elif intent == 'documentation':
@@ -962,91 +1034,82 @@ def main():
         if st.session_state.connection_status == "connected":
             st.subheader("📊 Error Statistics")
             
-            try:
-                stats = get_error_stats()
-                # Rename variable to avoid false positive lint warning
-                metric_cols = st.columns(2)
-                
-                with metric_cols[0]:
-                    st.metric("Total Errors", stats['total'])
-                
-                with metric_cols[1]:
-                    st.metric("Open Errors", stats['open'])
-                
-                if stats['by_layer']:
-                    st.write("**By Layer:**")
-                    for layer, count in stats['by_layer'].items():
-                        st.write(f"🔹 {layer.title()}: {count}")
+            stats = get_error_stats()
             
-            except Exception:
-                st.warning("Could not load statistics")
+            col1, col2 = st.columns(2)
+            col1.metric("Total Errors", stats['total'])
+            col2.metric("Open", stats['open'])
+            
+            if stats['by_layer']:
+                st.write("**By Layer:**")
+                for layer, count in stats['by_layer'].items():
+                    st.write(f"- {layer.capitalize()}: {count}")
         
         st.divider()
         
-        # Quick actions
-        st.subheader("⚡ Quick Actions")
+        # AI Status indicator
+        if AI_ENABLED:
+            st.success("🤖 AI Search: **Enabled**")
+            st.caption("Semantic search active for typo tolerance")
+        else:
+            st.warning("🔍 AI Search: **Disabled**")
+            st.caption("Using keyword search only")
         
-        if st.button("📋 Show Recent Errors"):
-            errors_df = get_today_errors()
-            response = format_error_response(errors_df)
-            st.session_state.messages.append({"role": "user", "content": "Show me today's errors"})
-            st.session_state.messages.append({"role": "assistant", "content": response})
-            st.rerun()
+        st.divider()
         
-        if st.button("🗑️ Clear Chat"):
+        # Chat controls
+        if st.button("🗑️ Clear Chat History"):
             st.session_state.messages = []
             st.rerun()
         
-        st.divider()
-        
-        # About
+        # Info section
         with st.expander("ℹ️ About"):
-            st.markdown("""
+            st.write("""
             **Pipeline Troubleshooting Assistant**
             
             This chatbot helps you:
-            - 🔍 Search pipeline error logs
-            - 📚 Find relevant documentation
-            - 💡 Get solutions for common issues
-            - 📊 Track error trends
+            - Search error logs
+            - Find troubleshooting documentation
+            - Understand pipeline architecture
+            - Learn about DLT expectations
             
             **Data Sources:**
-            - `retail_demo.monitoring.error_log`
-            - `retail_demo.rag.documentation_source`
+            - Error logs: `retail_demo.monitoring.error_log`
+            - Documentation: `retail_demo.rag.documentation_source`
+            
+            **Features:**
+            - AI-powered semantic search
+            - Typo-tolerant error search
+            - Natural language queries
             """)
     
     # ═══════════════════════════════════════════════════════════════════════════
-    # MAIN CHAT AREA
+    # MAIN CHAT INTERFACE
     # ═══════════════════════════════════════════════════════════════════════════
     
-    st.title("💬 Pipeline Troubleshooting Chat")
+    st.title("🤖 Pipeline Troubleshooting Assistant")
     
-    # Show starter questions if no messages
-    if len(st.session_state.messages) == 0:
-        st.info("👋 Welcome! Click any question below to get started:")
+    # Display starter questions if no chat history
+    if not st.session_state.messages:
+        st.write("### 👋 Welcome! Ask me anything about your pipeline")
+        st.write("**Quick Start Questions:**")
         
-        starter_questions = [
-            "Explain the pipeline architecture",
-            "What are common errors?",
-            "How do DLT expectations work?",
-            "Show me NULL customer_id errors",
-            "What errors happened today?",
-            "Explain expect_or_drop"
-        ]
+        col1, col2, col3 = st.columns(3)
         
-        # Rename variable to avoid false positive lint warning
-        question_cols = st.columns(2)
-        for idx, question in enumerate(starter_questions):
-            with question_cols[idx % 2]:
-                if st.button(question, key=f"starter_{idx}"):
-                    # Add user message
-                    st.session_state.messages.append({"role": "user", "content": question})
-                    
-                    # Generate response
-                    response = generate_response(question)
-                    st.session_state.messages.append({"role": "assistant", "content": response})
-                    
-                    st.rerun()
+        with col1:
+            if st.button("🏗️ Explain the pipeline"):
+                st.session_state.messages.append({"role": "user", "content": "Explain the pipeline architecture"})
+                st.rerun()
+        
+        with col2:
+            if st.button("🔴 Show common errors"):
+                st.session_state.messages.append({"role": "user", "content": "What are the most common errors?"})
+                st.rerun()
+        
+        with col3:
+            if st.button("📚 DLT expectations"):
+                st.session_state.messages.append({"role": "user", "content": "How do DLT expectations work?"})
+                st.rerun()
     
     # Display chat history
     for message in st.session_state.messages:
@@ -1054,27 +1117,21 @@ def main():
             st.markdown(message["content"])
     
     # Chat input
-    if prompt := st.chat_input("Ask me about pipeline errors or documentation..."):
-        # Add user message
+    if prompt := st.chat_input("Ask about errors, documentation, or pipeline architecture..."):
+        # Add user message to history
         st.session_state.messages.append({"role": "user", "content": prompt})
         
-        # Display user message
         with st.chat_message("user"):
             st.markdown(prompt)
         
         # Generate and display assistant response
         with st.chat_message("assistant"):
-            with st.spinner("Thinking..."):
-                response = generate_response(prompt)
-                st.markdown(response)
+            response = generate_response(prompt)
+            st.markdown(response)
         
         # Add assistant response to history
         st.session_state.messages.append({"role": "assistant", "content": response})
 
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# RUN APP
-# ═══════════════════════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
     main()
