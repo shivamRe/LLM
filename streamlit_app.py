@@ -355,45 +355,10 @@ def get_common_errors(limit: int = 10) -> pd.DataFrame:
 
 def search_documentation(keywords: str, limit: int = 5) -> pd.DataFrame:
     """
-    Search documentation_source table for relevant docs with smart synonym expansion.
-    
-    Args:
-        keywords: Search terms
-        limit: Max number of results
-        
-    Returns:
-        DataFrame with matching documentation
+    Search documentation using semantic vector search (NO MORE SYNONYMS!).
     """
-    # Expand keywords using documentation synonyms
-    expanded_keywords = expand_keywords_with_synonyms(keywords, get_documentation_synonyms())
-    
-    # Build query with expanded keywords
-    query = f"""
-    SELECT 
-        id,
-        category,
-        text,
-        source_doc
-    FROM retail_demo.rag.documentation_source
-    WHERE 1=1
-    """
-    
-    # Add keyword filter
-    if expanded_keywords:
-        keyword_conditions = []
-        for kw in expanded_keywords:
-            keyword_conditions.append(f"(text LIKE '%{kw}%' OR category LIKE '%{kw}%')")
-        if keyword_conditions:
-            query += " AND (" + " OR ".join(keyword_conditions) + ")"
-    else:
-        # Fallback: no filter
-        query += " AND 1=1"
-    
-    query += f"""
-    LIMIT {limit}
-    """
-    
-    return execute_query(query)
+    # Use semantic search instead of keyword + synonym expansion
+    return semantic_search_documentation(keywords, limit=limit)
 
 
 def get_today_errors() -> pd.DataFrame:
