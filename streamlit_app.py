@@ -213,7 +213,7 @@ def get_vector_search_client():
 def get_foundation_model_client():
     return OpenAI(
         api_key=os.getenv("DATABRICKS_TOKEN"),
-        base_url=f"https://{os.getenv(\'DATABRICKS_HOST\')}/serving-endpoints"
+        base_url=f"https://{os.getenv('DATABRICKS_HOST')}/serving-endpoints"
     )
 
 def semantic_search_documentation(query: str, limit: int = 5) -> pd.DataFrame:
