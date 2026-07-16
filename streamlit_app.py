@@ -22,6 +22,19 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# AI IMPORTS (Optional - with safe fallback)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+try:
+    from databricks.vector_search.client import VectorSearchClient
+    from openai import OpenAI
+    AI_ENABLED = True
+except ImportError:
+    AI_ENABLED = False
+    # Will show warning in UI when AI features are attempted
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # CONFIGURATION
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -202,32 +215,55 @@ def execute_query(query: str) -> Optional[pd.DataFrame]:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# AI-POWERED SEARCH
-# ═══════════════════════════════════════════════════════════════════════════════
 
-from databricks.vector_search.client import VectorSearchClient
-from openai import OpenAI
+# ═══════════════════════════════════════════════════════════════════════════════
+# AI-POWERED SEMANTIC SEARCH (Optional - with fallback)
+# ═══════════════════════════════════════════════════════════════════════════════
 
 @st.cache_resource
 def get_vector_search_client():
+    """Initialize Vector Search client (cached)."""
+    if not AI_ENABLED:
+        return None
     return VectorSearchClient(disable_notice=True)
 
-@st.cache_resource  
+@st.cache_resource
 def get_foundation_model_client():
+    """Initialize Foundation Model API client (cached)."""
+    if not AI_ENABLED:
+        return None
     return OpenAI(
         api_key=os.getenv('DATABRICKS_TOKEN'),
         base_url=f"https://{os.getenv('DATABRICKS_HOST')}/serving-endpoints"
     )
 
 def semantic_search_documentation(query: str, limit: int = 5) -> pd.DataFrame:
+    """
+    Semantic search using Vector Search - replaces manual keyword matching!
+    Falls back to empty DataFrame if AI not available.
+    
+    Args:
+        query: User's natural language question
+        limit: Number of results to return
+        
+    Returns:
+        DataFrame with matching documents
+    """
+    if not AI_ENABLED:
+        return pd.DataFrame()  # Fallback to keyword search
+    
     try:
         vsc = get_vector_search_client()
+        if vsc is None:
+            return pd.DataFrame()
         
+        # Get the vector search index
         index = vsc.get_index(
             endpoint_name=os.getenv('VECTOR_SEARCH_ENDPOINT', 'pipeline_chatbot_endpoint'),
             index_name=os.getenv('VECTOR_INDEX_NAME', 'retail_demo.rag.documentation_vector_index')
         )
         
+        # Perform semantic similarity search
         results = index.similarity_search(
             query_text=query,
             columns=['id', 'category', 'source_doc', 'text'],
@@ -242,18 +278,16 @@ def semantic_search_documentation(query: str, limit: int = 5) -> pd.DataFrame:
             return pd.DataFrame()
     
     except Exception as e:
-        st.error(f"⚠️ Semantic search failed: {str(e)}")
-        return pd.DataFrame()
+        st.warning(f"⚠️ Semantic search unavailable: {str(e)}")
+        return pd.DataFrame()  # Fallback to keyword search
 
 
-
-# ═══════════════════════════════════════════════════════════════════════════════
 # CORE CHATBOT FUNCTIONS
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def search_errors(keywords: str, layer: Optional[str] = None, limit: int = 10) -> pd.DataFrame:
     """
-    Search error_log table for matching errors with smart synonym expansion.
+    Search error_log table for matching errors (simple keyword search).
     
     Args:
         keywords: Search terms for error messages
@@ -263,10 +297,10 @@ def search_errors(keywords: str, layer: Optional[str] = None, limit: int = 10) -
     Returns:
         DataFrame with matching errors
     """
-    # Expand keywords using error synonyms
-    expanded_keywords = expand_keywords_with_synonyms(keywords, get_error_synonyms())
+    # Simple keyword split (no synonyms needed)
+    keyword_list = keywords.split()
     
-    # Build query with expanded keywords
+    # Build query with keywords
     query = f"""
     SELECT 
         error_id,
@@ -280,10 +314,10 @@ def search_errors(keywords: str, layer: Optional[str] = None, limit: int = 10) -
     WHERE 1=1
     """
     
-    # Add keyword filter - search for each expanded keyword
-    if expanded_keywords:
+    # Add keyword filter - search for each keyword
+    if keyword_list:
         keyword_conditions = []
-        for kw in expanded_keywords:
+        for kw in keyword_list:
             keyword_conditions.append(f"(error_message LIKE '%{kw}%' OR error_type LIKE '%{kw}%')")
         if keyword_conditions:
             query += " AND (" + " OR ".join(keyword_conditions) + ")"
@@ -329,10 +363,47 @@ def get_common_errors(limit: int = 10) -> pd.DataFrame:
 
 def search_documentation(keywords: str, limit: int = 5) -> pd.DataFrame:
     """
-    Search documentation using semantic vector search (NO MORE SYNONYMS!).
+    Search documentation using semantic vector search when available,
+    falls back to keyword search if not.
+    
+    Args:
+        keywords: Search terms
+        limit: Max number of results
+        
+    Returns:
+        DataFrame with matching documentation
     """
-    # Use semantic search instead of keyword + synonym expansion
-    return semantic_search_documentation(keywords, limit=limit)
+    # Try semantic search first (if AI enabled)
+    if AI_ENABLED:
+        semantic_results = semantic_search_documentation(keywords, limit=limit)
+        if not semantic_results.empty:
+            return semantic_results
+    
+    # Fallback: Simple keyword search (original Phase 1 logic)
+    keyword_list = keywords.split()
+    
+    query = f"""
+    SELECT 
+        id,
+        category,
+        text,
+        source_doc
+    FROM retail_demo.rag.documentation_source
+    WHERE 1=1
+    """
+    
+    if keyword_list:
+        keyword_conditions = []
+        for kw in keyword_list:
+            keyword_conditions.append(f"(text LIKE '%{kw}%' OR category LIKE '%{kw}%')")
+        if keyword_conditions:
+            query += " AND (" + " OR ".join(keyword_conditions) + ")"
+    else:
+        query += " AND 1=1"
+    
+    query += f" LIMIT {limit}"
+    
+    return execute_query(query)
 
 
 def get_today_errors() -> pd.DataFrame:
