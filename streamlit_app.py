@@ -205,97 +205,72 @@ def execute_query(query: str) -> Optional[pd.DataFrame]:
 # SYNONYM MAPPING - CENTRALIZED
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def get_error_synonyms() -> Dict[str, List[str]]:
-    """
-    Comprehensive synonym mapping for error-related terms.
-    
-    Returns:
-        Dictionary mapping base terms to their synonyms
-    """
-    return {
-        "error": ["error", "failure", "issue", "problem", "bug", "fault", "incident", "mistake", "crash", "exception", "broken", "wrong", "fail", "failuer", "failed"],
-        "failure": ["failure", "error", "fail", "failed", "issue", "problem", "bug", "crash", "exception", "broken", "fault"],
-        "issue": ["issue", "error", "problem", "failure", "bug", "trouble"],
-        "problem": ["problem", "error", "issue", "failure", "bug", "exception", "trouble"],
-        "bug": ["bug", "error", "issue", "failure", "problem", "defect"],
-        "fail": ["fail", "failure", "failed", "error", "problem", "broken", "exception", "crash"],
-        "null": ["null", "none", "empty", "missing", "blank"],
-        "invalid": ["invalid", "incorrect", "wrong", "bad", "malformed"],
-        "timeout": ["timeout", "timed out", "hang", "stuck", "slow"],
-        "permission": ["permission", "access", "denied", "forbidden", "unauthorized"],
-    }
+@st.cache_resource
+def get_vector_search_client():
+    return VectorSearchClient(disable_notice=True)
 
+@st.cache_resource
+def get_foundation_model_client():
+    return OpenAI(
+        api_key=os.getenv("DATABRICKS_TOKEN"),
+        base_url=f"https://{os.getenv(\'DATABRICKS_HOST\')}/serving-endpoints"
+    )
 
-def get_documentation_synonyms() -> Dict[str, List[str]]:
+def semantic_search_documentation(query: str, limit: int = 5) -> pd.DataFrame:
     """
-    Comprehensive synonym mapping for documentation/concept terms.
+    Semantic search using Vector Search - replaces manual synonym mapping!
+    """
+    try:
+        vsc = get_vector_search_client()
+        
+        index = vsc.get_index(
+            endpoint_name=os.getenv("VECTOR_SEARCH_ENDPOINT", "pipeline_chatbot_endpoint"),
+            index_name=os.getenv("VECTOR_INDEX_NAME", "retail_demo.rag.documentation_vector_index")
+        )
+        
+        results = index.similarity_search(
+            query_text=query,
+            columns=["id", "category", "source_doc", "text"],
+            num_results=limit
+        )
+        
+        # Convert to DataFrame
+        if results and \'result\' in results and \'data_array\' in results[\'result\']:
+            docs = results[\'result\'][\'data_array\']
+            return pd.DataFrame(docs, columns=[\'id\', \'category\', \'source_doc\', \'text\'])
+        else:
+            return pd.DataFrame()
     
-    Returns:
-        Dictionary mapping base terms to their synonyms
-    """
-    return {
-        # Pipeline terms
-        "pipeline": ["pipeline", "workflow", "etl", "data pipeline", "data flow", "processing"],
-        "dlt": ["dlt", "delta live tables", "delta live", "live tables"],
-        "flow": ["flow", "pipeline", "workflow", "process", "stream"],
-        
-        # Layer terms
-        "bronze": ["bronze", "raw", "landing", "source", "ingestion"],
-        "silver": ["silver", "cleaned", "cleansed", "validated", "refined", "curated"],
-        "gold": ["gold", "aggregated", "aggregate", "business", "analytics", "reporting"],
-        
-        # Quality terms
-        "expectation": ["expectation", "expect", "validation", "check", "quality check", "rule", "constraint"],
-        "validation": ["validation", "validate", "check", "verify", "expectation", "quality"],
-        "quality": ["quality", "data quality", "validation", "expectation", "check"],
-        
-        # Transformation terms
-        "transform": ["transform", "transformation", "convert", "process", "change", "modify"],
-        "aggregate": ["aggregate", "aggregation", "summarize", "summary", "group", "rollup"],
-        "filter": ["filter", "where", "condition", "select"],
-        "join": ["join", "merge", "combine", "link"],
-        
-        # Data terms
-        "schema": ["schema", "structure", "columns", "fields", "definition"],
-        "table": ["table", "dataset", "data", "source"],
-        "column": ["column", "field", "attribute", "property"],
-        
-        # Operation terms
-        "ingest": ["ingest", "ingestion", "load", "import", "input"],
-        "clean": ["clean", "cleanse", "sanitize", "validate", "filter"],
-        "process": ["process", "processing", "transform", "compute"],
-    }
+    except Exception as e:
+        st.error(f"⚠️ Semantic search failed: {str(e)}")
+        return pd.DataFrame()
 
-
-def expand_keywords_with_synonyms(keywords: str, synonym_map: Dict[str, List[str]]) -> set:
+def generate_intelligent_response(user_query: str, context: str) -> str:
     """
-    Expand keywords using a synonym mapping.
-    
-    Args:
-        keywords: Space-separated keywords
-        synonym_map: Dictionary of base terms to synonym lists
-        
-    Returns:
-        Set of expanded keywords including synonyms
+    Generate AI-powered response using Foundation Model.
     """
-    expanded = set()
-    
-    for kw in keywords.split():
-        kw_lower = kw.lower()
-        found = False
+    try:
+        client = get_foundation_model_client()
         
-        # Check if keyword matches any synonym group
-        for base, syns in synonym_map.items():
-            if kw_lower in syns:
-                expanded.update(syns)
-                found = True
-                break
+        system_prompt = """You are a data pipeline troubleshooting expert.
+Provide actionable solutions with code examples. Be concise but thorough."""
         
-        # If no match, add the original keyword
-        if not found:
-            expanded.add(kw_lower)
+        user_prompt = f"""Question: {user_query}\n\nContext:\n{context}\n\nProvide a helpful response."""
+        
+        response = client.chat.completions.create(
+            model="databricks-dbrx-instruct",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            max_tokens=500,
+            temperature=0.1
+        )
+        
+        return response.choices[0].message.content
     
-    return expanded
+    except Exception as e:
+        return f"Error: {str(e)}"
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
