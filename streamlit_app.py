@@ -244,14 +244,7 @@ def semantic_search_documentation(query: str, limit: int = 5) -> pd.DataFrame:
     except Exception as e:
         st.error(f"⚠️ Semantic search failed: {str(e)}")
         return pd.DataFrame()
-"""
 
-print("✅ Corrected code ready!")
-print("\n📋 Key fixes:")
-print("  1. Changed os.getenv(\'...\') to os.getenv('...')")
-print("  2. Changed ['result'] from [' result\'] ")
-print("  3. All quotes inside f-strings are now plain single quotes")
-print("\n🔧 To apply: Copy the code above and paste it into your streamlit_app.py")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
