@@ -250,7 +250,7 @@ def semantic_search_documentation(query: str, limit: int = 5) -> pd.DataFrame:
         DataFrame with matching documents
     """
     if not AI_ENABLED:
-        return pd.DataFrame()  # Fallback to keyword search
+        return pd.DataFrame()  # Fallback  to keyword search
     
     try:
         vsc = get_vector_search_client()
