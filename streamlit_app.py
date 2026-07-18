@@ -151,12 +151,19 @@ st.markdown("""
         color: #a6e3a1 !important;
     }
     
-    /* Inline code - light background with purple text */
+    /* Inline code - DARKER background with white text for visibility */
     code {
-        background: #f3f4f6 !important;
-        color: #667eea !important;
-        padding: 2px 6px;
-        border-radius: 4px;
+        background: #2d3748 !important;
+        color: #ffffff !important;
+        padding: 2px 8px !important;
+        border-radius: 4px !important;
+        font-weight: 500 !important;
+    }
+    
+    /* User message inline code - light background since user messages are dark */
+    [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-user"]) code {
+        background: rgba(255, 255, 255, 0.2) !important;
+        color: #ffffff !important;
     }
 </style>
 """, unsafe_allow_html=True)
