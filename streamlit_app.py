@@ -95,9 +95,22 @@ st.markdown("""
         color: white !important;
     }
     
-    /* Assistant messages - light background */
+    /* Assistant messages - light background with DARK TEXT */
     [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) {
         background: #f8f9fa !important;
+    }
+    
+    [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) p,
+    [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) div,
+    [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) span,
+    [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) strong,
+    [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) em,
+    [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) h1,
+    [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) h2,
+    [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) h3,
+    [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) h4,
+    [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) li {
+        color: #1a1a1a !important;
     }
     
     /* Buttons */
@@ -127,7 +140,7 @@ st.markdown("""
         color: white;
     }
     
-    /* Code blocks */
+    /* Code blocks - dark background with light text */
     pre {
         background: #1e1e2e !important;
         border-radius: 8px !important;
@@ -138,6 +151,7 @@ st.markdown("""
         color: #a6e3a1 !important;
     }
     
+    /* Inline code - light background with purple text */
     code {
         background: #f3f4f6 !important;
         color: #667eea !important;
