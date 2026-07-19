@@ -10,6 +10,7 @@ Features:
 """
 
 import streamlit as st
+import traceback
 import pandas as pd
 from databricks import sql
 import os
@@ -253,7 +254,7 @@ def get_foundation_model_client():
         return None
     return OpenAI(
         api_key=os.getenv('DATABRICKS_TOKEN'),
-        base_url=f"https://{os.getenv('DATABRICKS_HOST')}/serving-endpoints"
+        base_url=f"{os.getenv('DATABRICKS_HOST')}/serving-endpoints"
     )
 
 def semantic_search_documentation(query: str, limit: int = 5) -> pd.DataFrame:
@@ -269,7 +270,7 @@ def semantic_search_documentation(query: str, limit: int = 5) -> pd.DataFrame:
         DataFrame with matching documents
     """
     if not AI_ENABLED:
-        return pd.DataFrame()  # Fallback  to keyword search
+        return pd.DataFrame()  # Fallback to keyword search
     
     try:
         vsc = get_vector_search_client()
@@ -294,14 +295,14 @@ def semantic_search_documentation(query: str, limit: int = 5) -> pd.DataFrame:
             docs = results['result']['data_array']
             
             # Vector Search returns: [id, category, text, score]
-            # Handle dynamic column count in case the API changes
+            # Handle dynamic column count
             if len(docs) > 0 and len(docs[0]) == 4:
-                # 4 columns: the 3 we requested + similarity score
+                # 4 columns: the 3 we requested + similarity score (MOST COMMON)
                 df = pd.DataFrame(docs, columns=['id', 'category', 'text', 'score'])
                 # Drop score column for consistency with rest of code
                 return df[['id', 'category', 'text']]
             elif len(docs) > 0 and len(docs[0]) == 3:
-                # 3 columns: exactly what we requested (no score)
+                # 3 columns: exactly what we requested (no score added)
                 return pd.DataFrame(docs, columns=['id', 'category', 'text'])
             else:
                 # Unexpected format - return empty
@@ -405,7 +406,7 @@ def generate_llm_response(user_query: str, context_docs: pd.DataFrame,
         ]
         
         response = client.chat.completions.create(
-            model=os.getenv('LLM_MODEL_NAME', 'databricks-meta-llama-3-1-70b-instruct'),
+            model=os.getenv('LLM_MODEL_NAME', 'databricks-meta-llama-3-3-70b-instruct'),
             messages=messages,
             max_tokens=1500,
             temperature=0.7
@@ -414,7 +415,9 @@ def generate_llm_response(user_query: str, context_docs: pd.DataFrame,
         return response.choices[0].message.content
     
     except Exception as e:
-        return f"❌ AI response generation failed: {str(e)}\n\nPlease check your model endpoint configuration."
+        st.error(f"❌ LLM Response Generation Failed: {str(e)}")
+        st.code(traceback.format_exc())
+        return "Sorry, I was unable to generate a response."
 
 
 def extract_corrected_keywords(semantic_results: pd.DataFrame, max_keywords: int = 5) -> str:
