@@ -10,6 +10,7 @@ Features:
 """
 
 import streamlit as st
+import traceback
 import pandas as pd
 from databricks import sql
 import os
@@ -414,8 +415,9 @@ def generate_llm_response(user_query: str, context_docs: pd.DataFrame,
         return response.choices[0].message.content
     
     except Exception:
+        st.error(f"❌ LLM Response Generation Failed: {str(e)}")
         st.code(traceback.format_exc())
-        raise
+        return "Sorry, I was unable to generate a response."
 
 
 def extract_corrected_keywords(semantic_results: pd.DataFrame, max_keywords: int = 5) -> str:
