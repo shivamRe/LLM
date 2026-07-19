@@ -285,7 +285,7 @@ def semantic_search_documentation(query: str, limit: int = 5) -> pd.DataFrame:
         # Perform semantic similarity search
         results = index.similarity_search(
             query_text=query,
-            columns=['id', 'category', 'text'],
+            columns=['id', 'category', 'source_doc', 'text'],
             num_results=limit
         )
         
@@ -293,16 +293,16 @@ def semantic_search_documentation(query: str, limit: int = 5) -> pd.DataFrame:
         if results and 'result' in results and 'data_array' in results['result']:
             docs = results['result']['data_array']
             
-            # Vector Search returns: [id, category, text, score]
+            # Vector Search returns: [id, category, source_doc, text, score]
             # Handle dynamic column count in case the API changes
-            if len(docs) > 0 and len(docs[0]) == 4:
-                # 4 columns: the 3 we requested + similarity score
-                df = pd.DataFrame(docs, columns=['id', 'category', 'text', 'score'])
+            if len(docs) > 0 and len(docs[0]) == 5:
+                # 5 columns: the 4 we requested + similarity score
+                df = pd.DataFrame(docs, columns=['id', 'category', 'source_doc', 'text', 'score'])
                 # Drop score column for consistency with rest of code
-                return df[['id', 'category', 'text']]
-            elif len(docs) > 0 and len(docs[0]) == 3:
-                # 3 columns: exactly what we requested (no score)
-                return pd.DataFrame(docs, columns=['id', 'category', 'text'])
+                return df[['id', 'category', 'source_doc', 'text']]
+            elif len(docs) > 0 and len(docs[0]) == 4:
+                # 4 columns: exactly what we requested (no score)
+                return pd.DataFrame(docs, columns=['id', 'category', 'source_doc', 'text'])
             else:
                 # Unexpected format - return empty
                 return pd.DataFrame()
@@ -571,7 +571,8 @@ def search_documentation(keywords: str, limit: int = 5) -> pd.DataFrame:
     SELECT 
         id,
         category,
-        text
+        text,
+        source_doc
     FROM retail_demo.rag.documentation_source
     WHERE 1=1
     """
