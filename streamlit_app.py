@@ -257,7 +257,7 @@ def get_foundation_model_client():
         base_url=f"{os.getenv('DATABRICKS_HOST')}/serving-endpoints"
     )
 
-def semantic_search_documentation(query: str, limit: int = 5) -> pd.DataFrame:
+def semantic_search_documentation(query: str, limit: int = 20) -> pd.DataFrame:
     """
     Semantic search using Vector Search - replaces manual keyword matching!
     Falls back to empty DataFrame if AI not available.
