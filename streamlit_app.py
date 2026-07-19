@@ -269,7 +269,7 @@ def semantic_search_documentation(query: str, limit: int = 5) -> pd.DataFrame:
         DataFrame with matching documents
     """
     if not AI_ENABLED:
-        return pd.DataFrame()  # Fallback  to keyword search
+        return pd.DataFrame()  # Fallback to keyword search
     
     try:
         vsc = get_vector_search_client()
@@ -294,14 +294,14 @@ def semantic_search_documentation(query: str, limit: int = 5) -> pd.DataFrame:
             docs = results['result']['data_array']
             
             # Vector Search returns: [id, category, text, score]
-            # Handle dynamic column count in case the API changes
-            if len(docs) > 0 and len(docs[0]) == 5:
-                # 5 columns: the 4 we requested + similarity score
+            # Handle dynamic column count
+            if len(docs) > 0 and len(docs[0]) == 4:
+                # 4 columns: the 3 we requested + similarity score (MOST COMMON)
                 df = pd.DataFrame(docs, columns=['id', 'category', 'text', 'score'])
                 # Drop score column for consistency with rest of code
-                return df[['id', 'category',  'text']]
-            elif len(docs) > 0 and len(docs[0]) == 4:
-                # 4 columns: exactly what we requested (no score)
+                return df[['id', 'category', 'text']]
+            elif len(docs) > 0 and len(docs[0]) == 3:
+                # 3 columns: exactly what we requested (no score added)
                 return pd.DataFrame(docs, columns=['id', 'category', 'text'])
             else:
                 # Unexpected format - return empty
@@ -405,7 +405,7 @@ def generate_llm_response(user_query: str, context_docs: pd.DataFrame,
         ]
         
         response = client.chat.completions.create(
-            model=os.getenv('LLM_MODEL_NAME', 'databricks-meta-llama-3-1-70b-instruct'),
+            model=os.getenv('LLM_MODEL_NAME', 'databricks-dbrx-instruct'),
             messages=messages,
             max_tokens=1500,
             temperature=0.7
