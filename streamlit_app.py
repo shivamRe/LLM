@@ -414,7 +414,7 @@ def generate_llm_response(user_query: str, context_docs: pd.DataFrame,
         
         return response.choices[0].message.content
     
-    except Exception:
+    except Exception as e:
         st.error(f"❌ LLM Response Generation Failed: {str(e)}")
         st.code(traceback.format_exc())
         return "Sorry, I was unable to generate a response."
