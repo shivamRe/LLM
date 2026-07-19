@@ -405,7 +405,7 @@ def generate_llm_response(user_query: str, context_docs: pd.DataFrame,
         ]
         
         response = client.chat.completions.create(
-            model=os.getenv('LLM_MODEL_NAME', 'databricks-dbrx-instruct'),
+            model=os.getenv('LLM_MODEL_NAME', 'system.ai.claude-sonnet-5'),
             messages=messages,
             max_tokens=1500,
             temperature=0.7
