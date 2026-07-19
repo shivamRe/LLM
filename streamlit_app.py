@@ -413,8 +413,9 @@ def generate_llm_response(user_query: str, context_docs: pd.DataFrame,
         
         return response.choices[0].message.content
     
-    except Exception as e:
-        return f"❌ AI response generation failed: {str(e)}\n\nPlease check your model endpoint configuration."
+    except Exception:
+        st.code(traceback.format_exc())
+        raise
 
 
 def extract_corrected_keywords(semantic_results: pd.DataFrame, max_keywords: int = 5) -> str:
