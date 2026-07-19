@@ -4,7 +4,7 @@ A production-ready chatbot for Databricks pipeline troubleshooting and documenta
 
 Features:
 - Real-time error log queries
-- Documentation semantic search
+- AI-powered responses from documentation
 - Code examples with syntax highlighting
 - Chat history management
 """
@@ -95,9 +95,22 @@ st.markdown("""
         color: white !important;
     }
     
-    /* Assistant messages - light background */
+    /* Assistant messages - light background with DARK TEXT */
     [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) {
         background: #f8f9fa !important;
+    }
+    
+    [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) p,
+    [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) div,
+    [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) span,
+    [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) strong,
+    [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) em,
+    [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) h1,
+    [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) h2,
+    [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) h3,
+    [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) h4,
+    [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) li {
+        color: #1a1a1a !important;
     }
     
     /* Buttons */
@@ -127,7 +140,7 @@ st.markdown("""
         color: white;
     }
     
-    /* Code blocks */
+    /* Code blocks - dark background with light text */
     pre {
         background: #1e1e2e !important;
         border-radius: 8px !important;
@@ -138,11 +151,19 @@ st.markdown("""
         color: #a6e3a1 !important;
     }
     
+    /* Inline code - DARKER background with white text for visibility */
     code {
-        background: #f3f4f6 !important;
-        color: #667eea !important;
-        padding: 2px 6px;
-        border-radius: 4px;
+        background: #2d3748 !important;
+        color: #ffffff !important;
+        padding: 2px 8px !important;
+        border-radius: 4px !important;
+        font-weight: 500 !important;
+    }
+    
+    /* User message inline code - light background since user messages are dark */
+    [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-user"]) code {
+        background: rgba(255, 255, 255, 0.2) !important;
+        color: #ffffff !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -215,9 +236,7 @@ def execute_query(query: str) -> Optional[pd.DataFrame]:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# AI-POWERED SEMANTIC SEARCH (Optional - with fallback)
+# AI-POWERED SEMANTIC SEARCH & LLM RESPONSE GENERATION
 # ═══════════════════════════════════════════════════════════════════════════════
 
 @st.cache_resource
@@ -266,7 +285,7 @@ def semantic_search_documentation(query: str, limit: int = 5) -> pd.DataFrame:
         # Perform semantic similarity search
         results = index.similarity_search(
             query_text=query,
-            columns=['id', 'category', 'source_doc', 'text'],
+            columns=['id', 'category', 'text'],
             num_results=limit
         )
         
@@ -274,16 +293,16 @@ def semantic_search_documentation(query: str, limit: int = 5) -> pd.DataFrame:
         if results and 'result' in results and 'data_array' in results['result']:
             docs = results['result']['data_array']
             
-            # Vector Search returns: [id, category, source_doc, text, score]
+            # Vector Search returns: [id, category, text, score]
             # Handle dynamic column count in case the API changes
-            if len(docs) > 0 and len(docs[0]) == 5:
-                # 5 columns: the 4 we requested + similarity score
-                df = pd.DataFrame(docs, columns=['id', 'category', 'source_doc', 'text', 'score'])
+            if len(docs) > 0 and len(docs[0]) == 4:
+                # 4 columns: the 3 we requested + similarity score
+                df = pd.DataFrame(docs, columns=['id', 'category', 'text', 'score'])
                 # Drop score column for consistency with rest of code
-                return df[['id', 'category', 'source_doc', 'text']]
-            elif len(docs) > 0 and len(docs[0]) == 4:
-                # 4 columns: exactly what we requested (no score)
-                return pd.DataFrame(docs, columns=['id', 'category', 'source_doc', 'text'])
+                return df[['id', 'category', 'text']]
+            elif len(docs) > 0 and len(docs[0]) == 3:
+                # 3 columns: exactly what we requested (no score)
+                return pd.DataFrame(docs, columns=['id', 'category', 'text'])
             else:
                 # Unexpected format - return empty
                 return pd.DataFrame()
@@ -293,6 +312,109 @@ def semantic_search_documentation(query: str, limit: int = 5) -> pd.DataFrame:
     except Exception as e:
         st.warning(f"⚠️ Semantic search unavailable: {str(e)}")
         return pd.DataFrame()  # Fallback to keyword search
+
+
+def generate_llm_response(user_query: str, context_docs: pd.DataFrame, 
+                         errors_df: Optional[pd.DataFrame] = None,
+                         response_type: str = "general") -> str:
+    """
+    Generate AI response using Foundation Model with retrieved context.
+    
+    Args:
+        user_query: User's question
+        context_docs: Documentation retrieved from vector search
+        errors_df: Optional error data to include
+        response_type: Type of response (general, pipeline_overview, dlt_expectations, etc.)
+        
+    Returns:
+        AI-generated response
+    """
+    if not AI_ENABLED:
+        return "❌ AI features are disabled. Please install required packages: databricks-vector-search, openai"
+    
+    try:
+        client = get_foundation_model_client()
+        if client is None:
+            return "❌ Failed to initialize AI model client."
+        
+        # Build context from documentation
+        context = ""
+        if context_docs is not None and not context_docs.empty:
+            context += "**Relevant Documentation:**\n\n"
+            for _, row in context_docs.iterrows():
+                context += f"Category: {row.get('category', 'N/A')}\n"
+                context += f"{row['text']}\n\n"
+                context += "---\n\n"
+        
+        # Add error context if provided
+        if errors_df is not None and not errors_df.empty:
+            context += "\n**Error Data:**\n\n"
+            error_records = errors_df.to_dict('records')
+            for err in error_records[:5]:  # Limit to 5 errors for context
+                context += f"Error ID: {err['error_id']}\n"
+                context += f"Type: {err['error_type']}\n"
+                context += f"Layer: {err['layer']}\n"
+                context += f"Message: {err['error_message']}\n"
+                context += f"Solution: {err['solution']}\n"
+                context += f"Status: {err['status']}\n\n"
+        
+        # Build system prompt based on response type
+        if response_type == "pipeline_overview":
+            system_prompt = """You are a Databricks pipeline expert. Explain the pipeline architecture 
+            in a clear, structured way using markdown formatting. Include:
+            - Purpose and business context
+            - Layer breakdown (Bronze, Silver, Gold)
+            - Data flow
+            - Data quality strategy
+            
+            Use emojis and formatting to make it engaging. Be concise but comprehensive."""
+        
+        elif response_type == "dlt_expectations":
+            system_prompt = """You are a Delta Live Tables expert. Explain DLT expectations clearly:
+            - What they are and why they matter
+            - Types: expect(), expect_or_drop(), expect_or_fail()
+            - When to use each type
+            - Code examples
+            
+            Use markdown, code blocks, and emojis. Be practical and actionable."""
+        
+        elif response_type == "error_analysis":
+            system_prompt = """You are a data pipeline troubleshooting expert. Analyze the errors provided
+            and give practical, actionable advice. Format responses with:
+            - Clear problem identification
+            - Root cause analysis
+            - Step-by-step solutions with code examples
+            - Prevention tips
+            
+            Use markdown formatting and be concise."""
+        
+        else:
+            system_prompt = """You are a helpful Databricks pipeline assistant. Answer questions using
+            the provided documentation and error data. Be:
+            - Conversational but professional
+            - Concise (2-3 paragraphs max unless asked for details)
+            - Practical with code examples when relevant
+            - Use markdown formatting and emojis appropriately
+            
+            If you don't have enough context, say so and suggest what the user should look into."""
+        
+        # Call the LLM
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"Context:\n{context}\n\nUser Question: {user_query}"}
+        ]
+        
+        response = client.chat.completions.create(
+            model=os.getenv('LLM_MODEL_NAME', 'databricks-meta-llama-3-1-70b-instruct'),
+            messages=messages,
+            max_tokens=1500,
+            temperature=0.7
+        )
+        
+        return response.choices[0].message.content
+    
+    except Exception as e:
+        return f"❌ AI response generation failed: {str(e)}\n\nPlease check your model endpoint configuration."
 
 
 def extract_corrected_keywords(semantic_results: pd.DataFrame, max_keywords: int = 5) -> str:
@@ -449,8 +571,7 @@ def search_documentation(keywords: str, limit: int = 5) -> pd.DataFrame:
     SELECT 
         id,
         category,
-        text,
-        source_doc
+        text
     FROM retail_demo.rag.documentation_source
     WHERE 1=1
     """
@@ -601,64 +722,9 @@ def extract_keywords(message: str) -> List[str]:
     return keywords[:5]  # Return top 5 keywords
 
 
-def extract_summary_from_doc(text: str, max_length: int = 300) -> str:
-    """
-    Extract a clean summary from documentation text.
-    Looks for the "Purpose" section or first few sentences.
-    
-    Args:
-        text: Full documentation text
-        max_length: Maximum characters to return
-        
-    Returns:
-        Clean summary text
-    """
-    # Try to find the Purpose section
-    if 'Purpose' in text or 'purpose' in text:
-        # Extract text after "Purpose" keyword
-        purpose_match = re.search(r'[Pp]urpose[:\s]+(.*?)(?:\n\n|Business|Domain|\n[A-Z])', text, re.DOTALL)
-        if purpose_match:
-            summary = purpose_match.group(1).strip()
-            # Clean up formatting
-            summary = re.sub(r'\s+', ' ', summary)
-            if len(summary) <= max_length:
-                return summary
-            # Truncate at sentence boundary
-            truncate_at = summary[:max_length].rfind('.')
-            if truncate_at > 100:
-                return summary[:truncate_at + 1]
-    
-    # Fallback: Extract first paragraph or sentences
-    # Split by double newlines to get first paragraph
-    paragraphs = text.split('\n\n')
-    for para in paragraphs[:3]:  # Check first 3 paragraphs
-        para = para.strip()
-        # Skip headers and very short paragraphs
-        if len(para) > 50 and not para.isupper():
-            # Clean up
-            para = re.sub(r'\s+', ' ', para)
-            if len(para) <= max_length:
-                return para
-            # Truncate at sentence boundary
-            truncate_at = para[:max_length].rfind('.')
-            if truncate_at > 100:
-                return para[:truncate_at + 1]
-            return para[:max_length] + "..."
-    
-    # Last resort: just truncate intelligently
-    clean_text = re.sub(r'\s+', ' ', text.strip())
-    if len(clean_text) <= max_length:
-        return clean_text
-    truncate_at = clean_text[:max_length].rfind('.')
-    if truncate_at > 100:
-        return clean_text[:truncate_at + 1]
-    return clean_text[:max_length] + "..."
-
-
 def format_error_response(errors_df: pd.DataFrame) -> str:
     """
     Format error DataFrame into readable response.
-    Fix: Convert to list of dicts first to avoid Spark Connect issues.
     
     Args:
         errors_df: DataFrame with error data
@@ -721,257 +787,123 @@ def format_common_errors_response(errors_df: pd.DataFrame) -> str:
     return response
 
 
-def format_doc_response(docs_df: pd.DataFrame, conversational: bool = True, summary_only: bool = False) -> str:
-    """
-    Format documentation DataFrame into readable response.
-    Fix: Convert to list of dicts first to avoid Spark Connect issues.
-    
-    Args:
-        docs_df: DataFrame with documentation data
-        conversational: If True, natural format. If False, structured format.
-        summary_only: If True, extract only summaries (for "what is" questions)
-        
-    Returns:
-        Formatted markdown string
-    """
-    if docs_df is None or docs_df.empty:
-        return "I couldn't find documentation about that topic."
-    
-    # Convert to list of dicts to avoid Spark Connect issues
-    doc_records = docs_df.to_dict('records')
-    
-    if conversational:
-        # Natural conversational format
-        response = ""
-        
-        for row in doc_records:
-            content = row['text']
-            
-            if summary_only:
-                # For "what is" questions, extract just the summary
-                content = extract_summary_from_doc(content, max_length=300)
-            else:
-                # For other questions, show more detail but still truncate
-                if len(content) > 600:
-                    # Find a good breaking point
-                    truncate_at = content[:600].rfind('.')
-                    if truncate_at > 300:
-                        content = content[:truncate_at + 1]
-                    else:
-                        content = content[:600] + "..."
-            
-            response += f"{content}\n\n"
-        
-        return response.strip()
-    else:
-        # Structured format (only used for detailed documentation queries)
-        response = f"📚 **Found {len(doc_records)} documentation entry(ies):**\n\n"
-        
-        for idx, row in enumerate(doc_records, 1):
-            response += f"### 📄 Doc {idx}\n\n"
-            response += f"**Category:** {row.get('category', 'General')}\n\n"
-            
-            content = row['text']
-            if len(content) > 500:
-                content = content[:500] + "..."
-            
-            response += f"{content}\n\n"
-            
-            if 'source_doc' in row and row['source_doc']:
-                response += f"**Source:** {row['source_doc']}\n\n"
-            
-            response += "---\n\n"
-        
-        return response
-
-
-def format_pipeline_overview() -> str:
-    """
-    Generate a comprehensive pipeline overview response.
-    
-    Returns:
-        Formatted markdown string with pipeline overview
-    """
-    return """
-## 🏗️ Retail Demo Pipeline Overview
-
-**Purpose:**
-This is a **Medallion Architecture** pipeline demonstrating retail data processing with intentional errors for troubleshooting training.
-
-### 📊 Architecture Layers
-
-**1. 🥉 Bronze Layer** (Raw Data Ingestion)
-- **Table:** `bronze_orders`
-- **Purpose:** Store raw order data as received from source systems
-- **Schema:** order_id, customer_id, order_date, amount, status
-- **Data Quality:** Contains intentional data issues (NULL values, invalid dates, negative amounts)
-
-**2. 🥈 Silver Layer** (Cleaned & Validated)
-- **Table:** `silver_orders_clean`
-- **Purpose:** Validated data with quality checks applied
-- **Transformations:**
-  - Remove NULL customer_ids
-  - Parse and validate dates
-  - Filter out invalid amounts
-- **Expectations:** Data quality rules enforced (expect_or_drop)
-
-**3. 🥇 Gold Layer** (Business Aggregates)
-- **Table:** `gold_revenue_summary`
-- **Purpose:** Business-ready aggregated metrics
-- **Aggregations:** Daily revenue by customer, order counts, average amounts
-
-### 🔄 Data Flow
-
-```
-Source System → Bronze (Raw) → Silver (Clean) → Gold (Aggregated) → Analytics/BI
-```
-
-### 🎯 Business Use Cases
-- Daily Revenue Reporting
-- Data Quality Monitoring
-- Error Pattern Analysis
-- Pipeline Troubleshooting Training
-
-### 📈 Data Quality Strategy
-- **Bronze:** Accept all data (no rejection)
-- **Silver:** Enforce quality rules with expectations
-- **Gold:** Business-validated aggregates
-
-Need more details about a specific layer or concept? Just ask!
-"""
-
-
 def generate_response(user_message: str) -> str:
     """
-    Main chatbot logic - smarter and more conversational with better intent handling.
-    NOW WITH TYPO-TOLERANT ERROR SEARCH using AI semantic understanding!
+    Main chatbot logic - AI-powered with dynamic responses from LLM.
+    NO HARDCODED RESPONSES - everything generated by AI from documentation context.
     
     Args:
         user_message: User's input message
         
     Returns:
-        Bot's response string
+        AI-generated response string
     """
     intent = detect_intent(user_message)
     keywords = extract_keywords(user_message)
     keywords_str = " ".join(keywords)
     
-    response = ""
     message_lower = user_message.lower()
     
     # Handle based on intent
     if intent == 'pipeline_overview':
-        # User wants pipeline architecture/overview
-        response = format_pipeline_overview()
+        # Search for pipeline documentation
+        with st.spinner("🔍 Searching pipeline documentation..."):
+            docs_df = search_documentation("pipeline architecture medallion bronze silver gold", limit=5)
+            
+        with st.spinner("🤖 Generating response from AI..."):
+            return generate_llm_response(
+                user_query=user_message,
+                context_docs=docs_df,
+                response_type="pipeline_overview"
+            )
     
     elif intent == 'dlt_expectations':
-        # User wants DLT/expectations documentation
-        with st.spinner("📚 Searching DLT documentation..."):
+        # Search for DLT/expectations documentation
+        with st.spinner("🔍 Searching DLT documentation..."):
             docs_df = search_documentation("expectation expect_or_drop expect_or_fail quality", limit=5)
             
-            if docs_df is None or docs_df.empty:
-                response = """
-## 📚 DLT Expectations (Data Quality Checks)
-
-**Delta Live Tables Expectations** are data quality constraints that validate your data as it flows through the pipeline.
-
-### Types of Expectations:
-
-**1. `expect_or_drop()`**
-- **Behavior:** Drops rows that fail the constraint
-- **Use Case:** Remove bad data automatically
-- **Example:**
-```python
-@dlt.expect_or_drop("valid_customer_id", "customer_id IS NOT NULL")
-```
-
-**2. `expect_or_fail()`**
-- **Behavior:** Stops the pipeline if ANY row fails
-- **Use Case:** Critical validations that must pass
-- **Example:**
-```python
-@dlt.expect_or_fail("valid_order_id", "order_id IS NOT NULL")
-```
-
-**3. `expect()`**
-- **Behavior:** Records violations but keeps data
-- **Use Case:** Monitor data quality without blocking
-- **Example:**
-```python
-@dlt.expect("valid_amount", "amount > 0")
-```
-
-### Best Practices:
-- Use `expect_or_fail()` for critical business keys
-- Use `expect_or_drop()` for optional fields with bad data
-- Use `expect()` for monitoring and alerting
-
-Need specific examples from your pipeline? Just ask!
-"""
-            else:
-                response = "## 📚 DLT Expectations Documentation\n\n"
-                response += format_doc_response(docs_df, conversational=True, summary_only=False)
+        with st.spinner("🤖 Generating response from AI..."):
+            return generate_llm_response(
+                user_query=user_message,
+                context_docs=docs_df,
+                response_type="dlt_expectations"
+            )
     
     elif intent == 'common_errors':
-        # User wants to see common error patterns
-        with st.spinner("📊 Analyzing common error patterns..."):
+        # Get common error patterns
+        with st.spinner("📊 Analyzing error patterns..."):
             common_df = get_common_errors(limit=5)
             
             if common_df is None or common_df.empty:
-                response = "No error patterns found in the logs."
-            else:
-                response = format_common_errors_response(common_df)
+                return "No error patterns found in the logs."
+            
+            # Use LLM to analyze and explain patterns
+            docs_df = search_documentation("troubleshooting error common", limit=3)
+            
+        with st.spinner("🤖 Analyzing with AI..."):
+            return generate_llm_response(
+                user_query=user_message,
+                context_docs=docs_df,
+                errors_df=common_df,
+                response_type="error_analysis"
+            )
     
     elif intent == 'specific_error':
-        # User is searching for specific errors - NOW WITH TYPO CORRECTION!
+        # Search for specific errors with typo correction
         with st.spinner("🔍 Searching error logs..."):
             errors_df = search_errors(keywords_str, limit=5)
             
             # If no results, try AI-powered typo correction
             if (errors_df is None or errors_df.empty) and AI_ENABLED and keywords_str:
                 with st.spinner("🤖 Using AI to understand your query..."):
-                    # Use semantic search to understand what they meant
                     semantic_docs = semantic_search_documentation(user_message, limit=3)
                     
                     if not semantic_docs.empty:
-                        # Extract corrected keywords from semantic results
                         corrected_keywords = extract_corrected_keywords(semantic_docs)
                         
                         if corrected_keywords and corrected_keywords != keywords_str:
-                            # Retry error search with corrected keywords
                             errors_df = search_errors(corrected_keywords, limit=5)
                             
-                            # If we found errors now, mention the correction
                             if errors_df is not None and not errors_df.empty:
-                                response = f"💡 _I interpreted your query as: **{corrected_keywords}**_\n\n"
-                                response += format_error_response(errors_df)
+                                st.info(f"💡 _Interpreted your query as: **{corrected_keywords}**_")
             
-            # Still no results after AI correction?
-            if (errors_df is None or errors_df.empty) and not response:
+            # No errors found?
+            if errors_df is None or errors_df.empty:
                 if "today" in message_lower:
-                    response = "✅ **Great news!** No errors were logged today. Your pipeline is running smoothly! 🎉"
+                    return "✅ **Great news!** No errors were logged today. Your pipeline is running smoothly! 🎉"
                 elif keywords_str:
-                    response = f"✅ No errors found matching '**{keywords_str}**'. Your pipeline appears to be healthy for this query."
+                    return f"✅ No errors found matching '**{keywords_str}**'. Your pipeline appears to be healthy for this query."
                 else:
-                    response = "✅ No recent errors found. Everything looks good!"
-            elif not response:
-                # We found errors on first try
-                response = format_error_response(errors_df)
+                    return "✅ No recent errors found. Everything looks good!"
+            
+            # Found errors - use LLM to analyze and provide insights
+            docs_df = search_documentation(f"troubleshooting {keywords_str}", limit=3)
+            
+        with st.spinner("🤖 Analyzing errors with AI..."):
+            return generate_llm_response(
+                user_query=user_message,
+                context_docs=docs_df,
+                errors_df=errors_df,
+                response_type="error_analysis"
+            )
     
     elif intent == 'documentation':
-        # User wants general documentation/how-to
-        wants_summary = any(phrase in message_lower for phrase in ['what is', 'what\'s', 'tell me about', 'describe'])
-        
+        # General documentation query
         with st.spinner("📚 Searching documentation..."):
-            docs_df = search_documentation(keywords_str, limit=3)
+            docs_df = search_documentation(keywords_str, limit=5)
             
             if docs_df is None or docs_df.empty:
-                response = f"I couldn't find documentation about '**{keywords_str}**'.\n\nTry asking about:\n- Pipeline architecture (bronze, silver, gold layers)\n- Data quality checks (expect_or_drop, expect_or_fail)\n- Common troubleshooting scenarios"
-            else:
-                response = format_doc_response(docs_df, conversational=True, summary_only=wants_summary)
+                return f"I couldn't find documentation about '**{keywords_str}**'.\n\nTry asking about:\n- Pipeline architecture\n- Data quality checks\n- Common troubleshooting scenarios"
+            
+        with st.spinner("🤖 Generating response from AI..."):
+            return generate_llm_response(
+                user_query=user_message,
+                context_docs=docs_df,
+                response_type="general"
+            )
     
     else:
-        # General query - be smart about it
+        # General query - search both errors and docs
         with st.spinner("🤔 Thinking..."):
             errors_df = search_errors(keywords_str, limit=3)
             docs_df = search_documentation(keywords_str, limit=3)
@@ -979,37 +911,17 @@ Need specific examples from your pipeline? Just ask!
             has_errors = errors_df is not None and not errors_df.empty
             has_docs = docs_df is not None and not docs_df.empty
             
-            if has_errors or has_docs:
-                response = ""
+            if not has_errors and not has_docs:
+                # No context found - use LLM to provide helpful guidance
+                docs_df = search_documentation("pipeline architecture troubleshooting", limit=3)
                 
-                if has_errors:
-                    response += format_error_response(errors_df)
-                
-                if has_docs:
-                    if has_errors:
-                        response += "\n\n**📚 Related Documentation:**\n\n"
-                    response += format_doc_response(docs_df, conversational=True, summary_only=True)
-            else:
-                response = """
-👋 I'm here to help with pipeline troubleshooting! 
-
-**I can help you with:**
-- 🏗️ Pipeline architecture & flow
-- 📊 Common errors & solutions
-- 📚 DLT expectations & data quality
-- 🔍 Specific error searches
-- 💡 Best practices & examples
-
-**Try asking:**
-- "Explain the pipeline architecture"
-- "What are common errors?"
-- "How do DLT expectations work?"
-- "Show me NULL customer_id errors"
-
-What would you like to know?
-"""
-    
-    return response
+        with st.spinner("🤖 Generating response from AI..."):
+            return generate_llm_response(
+                user_query=user_message,
+                context_docs=docs_df,
+                errors_df=errors_df if has_errors else None,
+                response_type="general"
+            )
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1049,9 +961,9 @@ def main():
             
             stats = get_error_stats()
             
-            sidebar_col1, sidebar_col2 = st.columns(2)
-            sidebar_col1.metric("Total Errors", stats['total'])
-            sidebar_col2.metric("Open", stats['open'])
+            col1, col2 = st.columns(2)
+            col1.metric("Total Errors", stats['total'])
+            col2.metric("Open", stats['open'])
             
             if stats['by_layer']:
                 st.write("**By Layer:**")
@@ -1062,11 +974,11 @@ def main():
         
         # AI Status indicator
         if AI_ENABLED:
-            st.success("🤖 AI Search: **Enabled**")
-            st.caption("Semantic search active for typo tolerance")
+            st.success("🤖 AI Powered: **Active**")
+            st.caption("✨ Semantic search + LLM responses")
         else:
-            st.warning("🔍 AI Search: **Disabled**")
-            st.caption("Using keyword search only")
+            st.warning("🤖 AI Powered: **Disabled**")
+            st.caption("Install: databricks-vector-search, openai")
         
         st.divider()
         
@@ -1078,48 +990,51 @@ def main():
         # Info section
         with st.expander("ℹ️ About"):
             st.write("""
-            **Pipeline Troubleshooting Assistant**
+            **AI-Powered Pipeline Assistant**
             
-            This chatbot helps you:
-            - Search error logs
-            - Find troubleshooting documentation
-            - Understand pipeline architecture
-            - Learn about DLT expectations
+            This chatbot uses:
+            - 🔍 Vector Search for semantic understanding
+            - 🤖 Foundation Models for intelligent responses
+            - 📊 Real-time error log analysis
+            - 📚 RAG (Retrieval-Augmented Generation)
             
             **Data Sources:**
             - Error logs: `retail_demo.monitoring.error_log`
             - Documentation: `retail_demo.rag.documentation_source`
             
-            **Features:**
-            - AI-powered semantic search
-            - Typo-tolerant error search
-            - Natural language queries
+            **Environment Variables Required:**
+            - `DATABRICKS_HOST`
+            - `DATABRICKS_TOKEN`
+            - `DATABRICKS_WAREHOUSE_ID`
+            - `VECTOR_SEARCH_ENDPOINT`
+            - `VECTOR_INDEX_NAME`
+            - `LLM_MODEL_NAME`
             """)
     
     # ═══════════════════════════════════════════════════════════════════════════
     # MAIN CHAT INTERFACE
     # ═══════════════════════════════════════════════════════════════════════════
     
-    st.title("🤖 Pipeline Troubleshooting Assistant")
+    st.title("🤖 AI Pipeline Assistant")
     
     # Display starter questions if no chat history
     if not st.session_state.messages:
         st.write("### 👋 Welcome! Ask me anything about your pipeline")
         st.write("**Quick Start Questions:**")
         
-        main_col1, main_col2, main_col3 = st.columns(3)
+        col1, col2, col3 = st.columns(3)
         
-        with main_col1:
+        with col1:
             if st.button("🏗️ Explain the pipeline"):
                 st.session_state.messages.append({"role": "user", "content": "Explain the pipeline architecture"})
                 st.rerun()
         
-        with main_col2:
+        with col2:
             if st.button("🔴 Show common errors"):
                 st.session_state.messages.append({"role": "user", "content": "What are the most common errors?"})
                 st.rerun()
         
-        with main_col3:
+        with col3:
             if st.button("📚 DLT expectations"):
                 st.session_state.messages.append({"role": "user", "content": "How do DLT expectations work?"})
                 st.rerun()
