@@ -7,10 +7,11 @@ Features:
 - AI-powered responses from documentation
 - Code examples with syntax highlighting
 - Chat history management
+- Data quality metrics monitoring
+- DLT expectation failure tracking
 """
 
 import streamlit as st
-import traceback
 import pandas as pd
 from databricks import sql
 import os
@@ -254,7 +255,7 @@ def get_foundation_model_client():
         return None
     return OpenAI(
         api_key=os.getenv('DATABRICKS_TOKEN'),
-        base_url=f"{os.getenv('DATABRICKS_HOST')}/serving-endpoints"
+        base_url=f"https://{os.getenv('DATABRICKS_HOST')}/serving-endpoints"
     )
 
 def semantic_search_documentation(query: str, limit: int = 5) -> pd.DataFrame:
@@ -325,7 +326,7 @@ def generate_llm_response(user_query: str, context_docs: pd.DataFrame,
         user_query: User's question
         context_docs: Documentation retrieved from vector search
         errors_df: Optional error data to include
-        response_type: Type of response (general, pipeline_overview, dlt_expectations, etc.)
+        response_type: Type of response (general, pipeline_overview, dlt_expectations, quality_analysis, etc.)
         
     Returns:
         AI-generated response
@@ -352,12 +353,12 @@ def generate_llm_response(user_query: str, context_docs: pd.DataFrame,
             context += "\n**Error Data:**\n\n"
             error_records = errors_df.to_dict('records')
             for err in error_records[:5]:  # Limit to 5 errors for context
-                context += f"Error ID: {err['error_id']}\n"
-                context += f"Type: {err['error_type']}\n"
-                context += f"Layer: {err['layer']}\n"
-                context += f"Message: {err['error_message']}\n"
-                context += f"Solution: {err['solution']}\n"
-                context += f"Status: {err['status']}\n\n"
+                context += f"Error ID: {err.get('error_id', 'N/A')}\n"
+                context += f"Type: {err.get('error_type', 'N/A')}\n"
+                context += f"Layer: {err.get('layer', 'N/A')}\n"
+                context += f"Message: {err.get('error_message', 'N/A')}\n"
+                context += f"Solution: {err.get('solution', 'N/A')}\n"
+                context += f"Status: {err.get('status', 'N/A')}\n\n"
         
         # Build system prompt based on response type
         if response_type == "pipeline_overview":
@@ -389,6 +390,17 @@ def generate_llm_response(user_query: str, context_docs: pd.DataFrame,
             
             Use markdown formatting and be concise."""
         
+        elif response_type == "quality_analysis":
+            system_prompt = """You are a data quality expert analyzing pipeline metrics. Provide insights on:
+            - Filter rates (percentage of records dropped by DLT expectations)
+            - Quality scores (percentage passing validation)
+            - Which layers have issues and why
+            - DLT expectation failures and their impact
+            - Actionable recommendations to improve quality
+            
+            Use markdown, emojis (✅ 🟢 ⚠️ 🔴), metrics tables, and be data-driven.
+            Explain what the numbers mean in business terms."""
+        
         else:
             system_prompt = """You are a helpful Databricks pipeline assistant. Answer questions using
             the provided documentation and error data. Be:
@@ -406,7 +418,7 @@ def generate_llm_response(user_query: str, context_docs: pd.DataFrame,
         ]
         
         response = client.chat.completions.create(
-            model=os.getenv('LLM_MODEL_NAME', 'databricks-meta-llama-3-3-70b-instruct'),
+            model=os.getenv('LLM_MODEL_NAME', 'system.ai.claude-sonnet-5'),
             messages=messages,
             max_tokens=1500,
             temperature=0.7
@@ -415,9 +427,7 @@ def generate_llm_response(user_query: str, context_docs: pd.DataFrame,
         return response.choices[0].message.content
     
     except Exception as e:
-        st.error(f"❌ LLM Response Generation Failed: {str(e)}")
-        st.code(traceback.format_exc())
-        return "Sorry, I was unable to generate a response."
+        return f"❌ AI response generation failed: {str(e)}\n\nPlease check your model endpoint configuration."
 
 
 def extract_corrected_keywords(semantic_results: pd.DataFrame, max_keywords: int = 5) -> str:
@@ -470,6 +480,7 @@ def extract_corrected_keywords(semantic_results: pd.DataFrame, max_keywords: int
     return " ".join(keywords_list)
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
 # CORE CHATBOT FUNCTIONS
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -549,17 +560,73 @@ def get_common_errors(limit: int = 10) -> pd.DataFrame:
     return execute_query(query)
 
 
+def get_data_quality_summary() -> Optional[pd.DataFrame]:
+    """
+    Get real-time data quality metrics from the pipeline.
+    Shows filter rates and quality scores for each layer.
+    
+    Returns:
+        DataFrame with quality metrics per layer (orders, customers, products)
+    """
+    query = """
+    SELECT 
+        layer,
+        bronze_count,
+        silver_count,
+        filtered_count,
+        filter_rate_pct,
+        data_quality_score,
+        metric_timestamp
+    FROM workspace.default.data_quality_metrics
+    ORDER BY layer
+    """
+    
+    return execute_query(query)
+
+
+def get_dlt_expectation_failures(limit: int = 10) -> Optional[pd.DataFrame]:
+    """
+    Get DLT expectation violations from pipeline event logs.
+    These are real-time failures captured automatically by DLT.
+    
+    Args:
+        limit: Max number of violations to return
+        
+    Returns:
+        DataFrame with expectation violations
+    """
+    query = f"""
+    SELECT 
+        error_id,
+        timestamp,
+        pipeline_name,
+        layer,
+        error_type,
+        error_message,
+        solution,
+        status
+    FROM workspace.default.pipeline_error_monitoring
+    ORDER BY timestamp DESC
+    LIMIT {limit}
+    """
+    
+    return execute_query(query)
+
+
 def search_documentation(keywords: str, limit: int = 5) -> pd.DataFrame:
     """
     Search documentation using semantic vector search when available,
     falls back to keyword search if not.
+    
+    Note: Only selects core fields (id, category, text) even if documentation
+    source has additional fields like source, paragraph_count, character_count.
     
     Args:
         keywords: Search terms
         limit: Max number of results
         
     Returns:
-        DataFrame with matching documentation
+        DataFrame with matching documentation (id, category, text columns)
     """
     # Try semantic search first (if AI enabled)
     if AI_ENABLED:
@@ -568,6 +635,7 @@ def search_documentation(keywords: str, limit: int = 5) -> pd.DataFrame:
             return semantic_results
     
     # Fallback: Simple keyword search (original Phase 1 logic)
+    # Only select core fields - ignore new fields like source, paragraph_count, character_count
     keyword_list = keywords.split()
     
     query = f"""
@@ -620,6 +688,7 @@ def get_today_errors() -> pd.DataFrame:
 def get_error_stats() -> Dict:
     """
     Get error statistics summary.
+    Optimized for Spark Connect - avoids repeated DataFrame schema access.
     
     Returns:
         Dictionary with error counts by status and layer
@@ -635,15 +704,23 @@ def get_error_stats() -> Dict:
     
     df = execute_query(query)
     
-    if df is None or df.empty:
+    # Check for None first, then convert to dict to avoid .empty check
+    if df is None:
         return {"total": 0, "open": 0, "by_layer": {}}
     
-    total = df['count'].sum()
-    open_count = df[df['status'] == 'open']['count'].sum()
+    # Convert to records immediately to avoid repeated schema access
+    records = df.to_dict('records')
+    
+    if len(records) == 0:
+        return {"total": 0, "open": 0, "by_layer": {}}
+    
+    # Work with Python dicts instead of DataFrame filtering
+    total = sum(rec['count'] for rec in records)
+    open_count = sum(rec['count'] for rec in records if rec['status'] == 'open')
     
     by_layer = {}
     for layer in ['bronze', 'silver', 'gold']:
-        layer_count = df[df['layer'] == layer]['count'].sum()
+        layer_count = sum(rec['count'] for rec in records if rec['layer'] == layer)
         if layer_count > 0:
             by_layer[layer] = int(layer_count)
     
@@ -662,7 +739,7 @@ def detect_intent(message: str) -> str:
         message: User message
         
     Returns:
-        Intent type: 'pipeline_overview', 'dlt_expectations', 'common_errors', 'specific_error', 'documentation', 'general'
+        Intent type: 'pipeline_overview', 'dlt_expectations', 'data_quality', 'common_errors', 'specific_error', 'documentation', 'general'
     """
     message_lower = message.lower()
     
@@ -678,6 +755,13 @@ def detect_intent(message: str) -> str:
                     'data quality', 'quality check', 'validation']
     if any(keyword in message_lower for keyword in dlt_keywords):
         return 'dlt_expectations'
+    
+    # Data quality questions (NEW)
+    quality_keywords = ['data quality', 'quality score', 'filter rate', 
+                       'how many filtered', 'quality metrics', 'data health',
+                       'quality dashboard', 'quality summary', 'pipeline health']
+    if any(keyword in message_lower for keyword in quality_keywords):
+        return 'data_quality'
     
     # Common errors questions
     common_error_keywords = ['common error', 'common issue', 'common problem', 
@@ -832,6 +916,32 @@ def generate_response(user_message: str) -> str:
                 response_type="dlt_expectations"
             )
     
+    elif intent == 'data_quality':
+        # Get data quality metrics and DLT failures
+        with st.spinner("📊 Fetching quality metrics..."):
+            quality_df = get_data_quality_summary()
+            dlt_failures_df = get_dlt_expectation_failures(limit=5)
+            
+            # Avoid .empty check - use length after converting to dict
+            if quality_df is None:
+                return "❌ Unable to retrieve data quality metrics. The pipeline may not have run yet."
+            
+            quality_records = quality_df.to_dict('records')
+            if len(quality_records) == 0:
+                return "❌ No quality metrics available. The pipeline may not have run yet."
+            
+            # Search for quality documentation
+            docs_df = search_documentation("data quality expectation filter rate", limit=3)
+        
+        with st.spinner("🤖 Analyzing quality metrics with AI..."):
+            # Combine quality metrics as context for LLM
+            return generate_llm_response(
+                user_query=user_message,
+                context_docs=docs_df,
+                errors_df=quality_df,
+                response_type="quality_analysis"
+            )
+    
     elif intent == 'common_errors':
         # Get common error patterns
         with st.spinner("📊 Analyzing error patterns..."):
@@ -970,8 +1080,38 @@ def main():
             
             if stats['by_layer']:
                 st.write("**By Layer:**")
-                for layer, count in stats['by_layer'].items():
+                layer_items = list(stats['by_layer'].items())
+                for layer, count in layer_items:
                     st.write(f"- {layer.capitalize()}: {count}")
+        
+        st.divider()
+        
+        # Data Quality Metrics (NEW) - Spark Connect optimized
+        if st.session_state.connection_status == "connected":
+            st.subheader("📊 Data Quality")
+            
+            quality_df = get_data_quality_summary()
+            
+            # Avoid .empty check - convert to dict immediately
+            if quality_df is not None:
+                quality_rows = quality_df.to_dict('records')
+                
+                if len(quality_rows) > 0:
+                    for row in quality_rows:
+                        layer = row['layer']
+                        quality = float(row['data_quality_score'])
+                        
+                        # Color-code based on quality
+                        if quality >= 95:
+                            st.success(f"✅ {layer.capitalize()}: {quality:.1f}%")
+                        elif quality >= 85:
+                            st.warning(f"⚠️ {layer.capitalize()}: {quality:.1f}%")
+                        else:
+                            st.error(f"🔴 {layer.capitalize()}: {quality:.1f}%")
+                else:
+                    st.info("No quality metrics available yet")
+            else:
+                st.info("No quality metrics available yet")
         
         st.divider()
         
@@ -1000,10 +1140,13 @@ def main():
             - 🤖 Foundation Models for intelligent responses
             - 📊 Real-time error log analysis
             - 📚 RAG (Retrieval-Augmented Generation)
+            - 📈 Data quality monitoring
             
             **Data Sources:**
             - Error logs: `retail_demo.monitoring.error_log`
             - Documentation: `retail_demo.rag.documentation_source`
+            - Quality metrics: `workspace.default.data_quality_metrics`
+            - DLT failures: `workspace.default.pipeline_error_monitoring`
             
             **Environment Variables Required:**
             - `DATABRICKS_HOST`
@@ -1033,13 +1176,13 @@ def main():
                 st.rerun()
         
         with col2:
-            if st.button("🔴 Show common errors"):
-                st.session_state.messages.append({"role": "user", "content": "What are the most common errors?"})
+            if st.button("📊 Data quality status"):
+                st.session_state.messages.append({"role": "user", "content": "What's my current data quality?"})
                 st.rerun()
         
         with col3:
-            if st.button("📚 DLT expectations"):
-                st.session_state.messages.append({"role": "user", "content": "How do DLT expectations work?"})
+            if st.button("🔴 Show common errors"):
+                st.session_state.messages.append({"role": "user", "content": "What are the most common errors?"})
                 st.rerun()
     
     # Display chat history
