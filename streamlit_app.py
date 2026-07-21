@@ -551,7 +551,7 @@ def get_common_errors(limit: int = 10) -> pd.DataFrame:
         MAX(error_message) as example_message,
         MAX(solution) as solution,
         layer
-    FROM retail_demo.monitoring.error_log
+    FROM retail_demo.gold.pipeline_error_monitoring,
     GROUP BY error_type, layer
     ORDER BY occurrence_count DESC
     LIMIT {limit}
@@ -577,7 +577,7 @@ def get_data_quality_summary() -> Optional[pd.DataFrame]:
         filter_rate_pct,
         data_quality_score,
         metric_timestamp
-    FROM workspace.default.data_quality_metrics
+    FROM retail_demo.gold.data_quality_metrics
     ORDER BY layer
     """
     
