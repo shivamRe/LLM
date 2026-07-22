@@ -1172,17 +1172,32 @@ def main():
         
         with col1:
             if st.button("🏗️ Explain the pipeline"):
-                st.session_state.messages.append({"role": "user", "content": "Explain the pipeline architecture"})
+                prompt = "Explain the pipeline architecture"
+                st.session_state.messages.append({"role": "user", "content": prompt})
+                
+                # Generate response immediately
+                response = generate_response(prompt)
+                st.session_state.messages.append({"role": "assistant", "content": response})
                 st.rerun()
         
         with col2:
             if st.button("📊 Data quality status"):
-                st.session_state.messages.append({"role": "user", "content": "What's my current data quality?"})
+                prompt = "What's my current data quality?"
+                st.session_state.messages.append({"role": "user", "content": prompt})
+                
+                # Generate response immediately
+                response = generate_response(prompt)
+                st.session_state.messages.append({"role": "assistant", "content": response})
                 st.rerun()
         
         with col3:
             if st.button("🔴 Show common errors"):
-                st.session_state.messages.append({"role": "user", "content": "What are the most common errors?"})
+                prompt = "What are the most common errors?"
+                st.session_state.messages.append({"role": "user", "content": prompt})
+                
+                # Generate response immediately
+                response = generate_response(prompt)
+                st.session_state.messages.append({"role": "assistant", "content": response})
                 st.rerun()
     
     # Display chat history
@@ -1209,3 +1224,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
