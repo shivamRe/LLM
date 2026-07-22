@@ -345,7 +345,15 @@ def generate_llm_response(user_query: str, context_docs: pd.DataFrame,
             context += "**Relevant Documentation:**\n\n"
             for _, row in context_docs.iterrows():
                 context += f"Category: {row.get('category', 'N/A')}\n"
-                context += f"{row['text']}\n\n"
+                context += f"""
+                            --- DOCUMENT CHUNK ---
+                            Category: {row.get('category','N/A')}
+                            
+                            {row['text']}
+                            
+                            --- END CHUNK ---
+                            
+                            """
                 context += "---\n\n"
         
         # Add error context if provided
@@ -1020,7 +1028,7 @@ def generate_response(user_message: str) -> str:
     elif intent == 'documentation':
         # General documentation query
         with st.spinner("📚 Searching documentation..."):
-            docs_df = search_documentation(keywords_str, limit=5)
+            docs_df = search_documentation(keywords_str, limit=10)
             
             if docs_df is None or docs_df.empty:
                 return f"I couldn't find documentation about '**{keywords_str}**'.\n\nTry asking about:\n- Pipeline architecture\n- Data quality checks\n- Common troubleshooting scenarios"
