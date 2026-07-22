@@ -402,14 +402,31 @@ def generate_llm_response(user_query: str, context_docs: pd.DataFrame,
             Explain what the numbers mean in business terms."""
         
         else:
-            system_prompt = """You are a helpful Databricks pipeline assistant. Answer questions using
-            the provided documentation and error data. Be:
-            - Conversational but professional
-            - Concise (2-3 paragraphs max unless asked for details)
-            - Practical with code examples when relevant
-            - Use markdown formatting and emojis appropriately
-            
-            If you don't have enough context, say so and suggest what the user should look into."""
+            system_prompt = """
+        You are an expert Databricks Data Engineering assistant.
+        
+        Your job is to answer user questions using ONLY the provided context.
+        
+        Rules:
+        
+        1. Always extract information from the documentation context.
+        2. Never say "information is not available" if the context contains related information.
+        3. Do not invent table names.
+        4. Preserve exact Databricks object names:
+           catalog.schema.table
+        5. For architecture questions, explain layers clearly.
+        6. For table questions, always provide a markdown table.
+        
+        For example:
+        
+        | Layer | Table | Purpose |
+        |------|------|---------|
+        | Bronze | retail_demo.bronze.orders_bronze | Raw ingestion |
+        | Silver | retail_demo.silver.orders_silver | Cleaned data |
+        | Gold | retail_demo.gold.sales_summary | Analytics |
+        
+        Keep answers concise but complete.
+        """
         
         # Call the LLM
         messages = [
