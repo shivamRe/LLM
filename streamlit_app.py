@@ -378,7 +378,33 @@ def generate_llm_response(user_query: str, context_docs: pd.DataFrame,
             - Data quality strategy
             
             Use emojis and formatting to make it engaging. Be concise but comprehensive."""
-        
+
+
+        elif response_type == "data_lineage":
+            system_prompt = """
+                You are a Databricks Pipeline Documentation Assistant.
+                
+                The retrieved documentation is the ONLY source of truth.
+                
+                Extract the lineage exactly as written.
+                
+                Rules:
+                
+                1. Never infer relationships.
+                2. Never invent upstream or downstream tables.
+                3. Never rename tables.
+                4. Preserve catalog.schema.table names exactly.
+                5. If a dependency is not explicitly written, write:
+                   "Not specified in the documentation."
+                6. Return ONLY a markdown table:
+                
+                | Layer | Table | Purpose | Upstream | Downstream |
+                
+                Do not summarize.
+                Do not explain.
+                Do not add extra information.
+                """
+                                             
         elif response_type == "dlt_expectations":
             system_prompt = """You are a Delta Live Tables expert. Explain DLT expectations clearly:
             - What they are and why they matter
@@ -411,30 +437,41 @@ def generate_llm_response(user_query: str, context_docs: pd.DataFrame,
         
         else:
             system_prompt = """
-        You are an expert Databricks Data Engineering assistant.
-        
-        Your job is to answer user questions using ONLY the provided context.
-        
-        Rules:
-        
-        1. Always extract information from the documentation context.
-        2. Never say "information is not available" if the context contains related information.
-        3. Do not invent table names.
-        4. Preserve exact Databricks object names:
-           catalog.schema.table
-        5. For architecture questions, explain layers clearly.
-        6. For table questions, always provide a markdown table.
-        
-        For example:
-        
-        | Layer | Table | Purpose |
-        |------|------|---------|
-        | Bronze | retail_demo.bronze.orders_bronze | Raw ingestion |
-        | Silver | retail_demo.silver.orders_silver | Cleaned data |
-        | Gold | retail_demo.gold.sales_summary | Analytics |
-        
-        Keep answers concise but complete.
-        """
+            You are a Databricks Pipeline Documentation Assistant.
+            
+            Your ONLY source of truth is the retrieved documentation.
+            
+            General Rules:
+            
+            1. Use ONLY the retrieved documentation.
+            2. Never invent facts.
+            3. Never infer relationships.
+            4. Never rename tables.
+            5. Preserve table names exactly as written.
+            6. Preserve catalog.schema.table names exactly.
+            7. If something is not explicitly documented, reply:
+               "Not specified in the documentation."
+            8. Do not use your own Databricks knowledge.
+            
+            Special Rules:
+            
+            • Architecture questions
+              - Explain only what is documented.
+            
+            • Table questions
+              - Return markdown tables whenever possible.
+            
+            • Data Lineage questions
+              - Return ONLY documented lineage.
+              - Never infer upstream/downstream dependencies.
+              - Never create missing joins.
+              - Never change table names.
+              - Use this format:
+            
+            | Layer | Table | Purpose | Upstream | Downstream |
+            
+            Keep responses concise, accurate, and grounded in the documentation.
+            """
         
         # Call the LLM
         messages = [
@@ -774,7 +811,20 @@ def detect_intent(message: str) -> str:
                         'pipeline flow', 'how does pipeline work', 'pipeline layers']
     if any(keyword in message_lower for keyword in pipeline_keywords):
         return 'pipeline_overview'
+
+
+    lineage_keywords = [
+        "lineage",
+        "data lineage",
+        "upstream",
+        "downstream",
+        "dependency",
+        "data flow"
+    ]
     
+    if any(k in message_lower for k in lineage_keywords):
+        return "data_lineage"     
+        
     # DLT/Expectations questions
     dlt_keywords = ['dlt', 'expectation', 'expect_or_drop', 'expect_or_fail', 
                     'data quality', 'quality check', 'validation']
@@ -928,7 +978,18 @@ def generate_response(user_message: str) -> str:
                 context_docs=docs_df,
                 response_type="pipeline_overview"
             )
+    elif intent == "data_lineage":
+        docs_df = search_documentation(
+            "data lineage upstream downstream source bronze silver gold joins",
+            limit=15
+        )
     
+        return generate_llm_response(
+            user_query=user_message,
+            context_docs=docs_df,
+            response_type="data_lineage"
+        )
+        
     elif intent == 'dlt_expectations':
         # Search for DLT/expectations documentation
         with st.spinner("🔍 Searching DLT documentation..."):
