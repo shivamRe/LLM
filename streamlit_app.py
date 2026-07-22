@@ -920,7 +920,7 @@ def generate_response(user_message: str) -> str:
     if intent == 'pipeline_overview':
         # Search for pipeline documentation
         with st.spinner("🔍 Searching pipeline documentation..."):
-            docs_df = search_documentation("pipeline architecture medallion bronze silver gold", limit=5)
+            docs_df = search_documentation("pipeline architecture medallion bronze silver gold", limit=10)
             
         with st.spinner("🤖 Generating response from AI..."):
             return generate_llm_response(
@@ -932,7 +932,7 @@ def generate_response(user_message: str) -> str:
     elif intent == 'dlt_expectations':
         # Search for DLT/expectations documentation
         with st.spinner("🔍 Searching DLT documentation..."):
-            docs_df = search_documentation("expectation expect_or_drop expect_or_fail quality", limit=5)
+            docs_df = search_documentation("expectation expect_or_drop expect_or_fail quality", limit=10)
             
         with st.spinner("🤖 Generating response from AI..."):
             return generate_llm_response(
@@ -945,7 +945,7 @@ def generate_response(user_message: str) -> str:
         # Get data quality metrics and DLT failures
         with st.spinner("📊 Fetching quality metrics..."):
             quality_df = get_data_quality_summary()
-            dlt_failures_df = get_dlt_expectation_failures(limit=5)
+            dlt_failures_df = get_dlt_expectation_failures(limit=10)
             
             # Avoid .empty check - use length after converting to dict
             if quality_df is None:
@@ -956,7 +956,7 @@ def generate_response(user_message: str) -> str:
                 return "❌ No quality metrics available. The pipeline may not have run yet."
             
             # Search for quality documentation
-            docs_df = search_documentation("data quality expectation filter rate", limit=3)
+            docs_df = search_documentation("data quality expectation filter rate", limit=10)
         
         with st.spinner("🤖 Analyzing quality metrics with AI..."):
             # Combine quality metrics as context for LLM
@@ -976,7 +976,7 @@ def generate_response(user_message: str) -> str:
                 return "No error patterns found in the logs."
             
             # Use LLM to analyze and explain patterns
-            docs_df = search_documentation("troubleshooting error common", limit=3)
+            docs_df = search_documentation("troubleshooting error common", limit=10)
             
         with st.spinner("🤖 Analyzing with AI..."):
             return generate_llm_response(
@@ -994,13 +994,13 @@ def generate_response(user_message: str) -> str:
             # If no results, try AI-powered typo correction
             if (errors_df is None or errors_df.empty) and AI_ENABLED and keywords_str:
                 with st.spinner("🤖 Using AI to understand your query..."):
-                    semantic_docs = semantic_search_documentation(user_message, limit=3)
+                    semantic_docs = semantic_search_documentation(user_message, limit=10)
                     
                     if not semantic_docs.empty:
                         corrected_keywords = extract_corrected_keywords(semantic_docs)
                         
                         if corrected_keywords and corrected_keywords != keywords_str:
-                            errors_df = search_errors(corrected_keywords, limit=5)
+                            errors_df = search_errors(corrected_keywords, limit=10)
                             
                             if errors_df is not None and not errors_df.empty:
                                 st.info(f"💡 _Interpreted your query as: **{corrected_keywords}**_")
@@ -1015,7 +1015,7 @@ def generate_response(user_message: str) -> str:
                     return "✅ No recent errors found. Everything looks good!"
             
             # Found errors - use LLM to analyze and provide insights
-            docs_df = search_documentation(f"troubleshooting {keywords_str}", limit=3)
+            docs_df = search_documentation(f"troubleshooting {keywords_str}", limit=10)
             
         with st.spinner("🤖 Analyzing errors with AI..."):
             return generate_llm_response(
@@ -1044,14 +1044,14 @@ def generate_response(user_message: str) -> str:
         # General query - search both errors and docs
         with st.spinner("🤔 Thinking..."):
             errors_df = search_errors(keywords_str, limit=3)
-            docs_df = search_documentation(keywords_str, limit=3)
+            docs_df = search_documentation(keywords_str, limit=10)
             
             has_errors = errors_df is not None and not errors_df.empty
             has_docs = docs_df is not None and not docs_df.empty
             
             if not has_errors and not has_docs:
                 # No context found - use LLM to provide helpful guidance
-                docs_df = search_documentation("pipeline architecture troubleshooting", limit=3)
+                docs_df = search_documentation("pipeline architecture troubleshooting", limit=10)
                 
         with st.spinner("🤖 Generating response from AI..."):
             return generate_llm_response(
