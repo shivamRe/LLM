@@ -382,27 +382,61 @@ def generate_llm_response(user_query: str, context_docs: pd.DataFrame,
 
         elif response_type == "data_lineage":
             system_prompt = """
-                You are a Databricks Pipeline Documentation Assistant.
-                
-                The retrieved documentation is the ONLY source of truth.
-                
-                Extract the lineage exactly as written.
-                
-                Rules:
-                
-                1. Never infer relationships.
-                2. Never invent upstream or downstream tables.
-                3. Never rename tables.
-                4. Preserve catalog.schema.table names exactly.
-                5. If a dependency is not explicitly written, write:
-                   "Not specified in the documentation."
-                6. Return ONLY a markdown table:
-                
-                | Layer | Table | Purpose | Upstream | Downstream |
-                
-                Do not summarize.
-                Do not explain.
-                Do not add extra information.
+                    You are a Databricks Pipeline Documentation Assistant.
+                    
+                    The retrieved documentation is the ONLY source of truth.
+                    
+                    Your task is INFORMATION EXTRACTION, not question answering.
+                    
+                    Rules:
+                    
+                    1. Use ONLY the retrieved documentation.
+                    2. Never infer relationships.
+                    3. Never invent upstream or downstream dependencies.
+                    4. Never rename tables.
+                    5. Preserve every catalog.schema.table name exactly.
+                    6. Never use your own Databricks knowledge.
+                    7. If a value is not explicitly present in the documentation, write:
+                       "Not specified in the documentation."
+                    8. If multiple downstream tables exist, list ALL of them exactly as documented.
+                    9. Do NOT replace table names with business descriptions.
+                    10. Do NOT omit any documented lineage.
+                    
+                    Extraction Instructions:
+                    
+                    For every table mentioned in the Data Lineage section:
+                    
+                    • Layer = copy exactly
+                    • Table = copy exactly
+                    • Purpose = copy exactly from the documentation
+                    • Upstream = copy exactly from the documented data flow
+                    • Downstream = copy exactly from the documented data flow
+                    
+                    For example:
+                    
+                    Orders Flow
+                    
+                    source.orders
+                        ↓
+                    bronze.orders
+                        ↓
+                    silver.orders
+                        ├── gold.daily_sales
+                        ├── gold.customer_ltv
+                        └── gold.inventory
+                    
+                    should become
+                    
+                    | Layer | Table | Purpose | Upstream | Downstream |
+                    |-------|-------|---------|----------|------------|
+                    | Bronze | bronze.orders | ... | source.orders | silver.orders |
+                    | Silver | silver.orders | ... | bronze.orders | gold.daily_sales, gold.customer_ltv, gold.inventory |
+                    
+                    Return ONLY the markdown table.
+                    
+                    Do not explain.
+                    Do not summarize.
+                    Do not add notes.
                 """
                                              
         elif response_type == "dlt_expectations":
